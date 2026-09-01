@@ -805,7 +805,7 @@ function App() {
     // ヘッダー
     h('header', { className: 'header' }, [
       h('div', { className: 'header-title' }, [
-        h('span', null, '🏮 『ナウキ』運び'),
+        h('span', null, '🏮 『ナウキ運び』'),
         h('span', { className: `header-turn-badge ${isHuman ? 'turn-me' : 'turn-bot'}` }, `手番: ${p.name}`)
       ]),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, [
