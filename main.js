@@ -42,10 +42,10 @@ const TILES = [
 ];
 
 const PLAYERS_DEF = [
-  { name: 'あなた', color: '#e03131', isHuman: true },
-  { name: 'BOT1', color: '#1971c2', isHuman: false },
-  { name: 'BOT2', color: '#2f9e44', isHuman: false },
-  { name: 'BOT3', color: '#7950f2', isHuman: false }
+  { name: 'あなた', color: '#c53030', isHuman: true },
+  { name: 'BOT1', color: '#2b6cb0', isHuman: false },
+  { name: 'BOT2', color: '#2f855a', isHuman: false },
+  { name: 'BOT3', color: '#6b46c1', isHuman: false }
 ];
 
 const HAND_LIMITS = [5, 6, 7];
@@ -674,16 +674,16 @@ function App() {
   const renderCenter = () => {
     if (!isHuman) {
       return h('div', { className: 'center-hub' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold' } }, `🤖 ${p.name} 思考中...`),
-        h('div', { style: { fontSize: '11px', color: '#868e96' } }, `${TILES[p.pos].icon} ${TILES[p.pos].name}`)
+        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#4a5568' } }, `🤖 ${p.name} 思考中...`),
+        h('div', { style: { fontSize: '11px', color: '#718096' } }, `${TILES[p.pos].icon} ${TILES[p.pos].name}`)
       ]);
     }
 
     // Step 1: 移動
     if (state.step === 1) {
       return h('div', { className: 'center-hub step-1' }, [
-        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: '#c92a2a' } }, '🎯【移動】'),
-        h('div', { style: { fontSize: '11px', color: '#495057' } }, '手札を選んで進む')
+        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: '#9b2c2c' } }, '🎯【移動】'),
+        h('div', { style: { fontSize: '11px', color: '#4a5568' } }, '手札を選んで進む')
       ]);
     }
 
@@ -774,7 +774,7 @@ function App() {
     // Step 4: 返却
     if (state.step === 4) {
       return h('div', { className: 'center-hub step-4' }, [
-        h('div', { style: { fontSize: '11px', fontWeight: 'bold', color: '#6741d9' } }, `↩️ ${overflowSelectedIds.length}/${state.excessCount}枚 選択中`),
+        h('div', { style: { fontSize: '11px', fontWeight: 'bold', color: '#6b46c1' } }, `↩️ ${overflowSelectedIds.length}/${state.excessCount}枚 選択中`),
         h('button', {
           disabled: overflowSelectedIds.length !== state.excessCount,
           onClick: handleConfirmExcess,
@@ -790,8 +790,8 @@ function App() {
   if (state.gameOver) {
     const winner = state.players.reduce((prev, curr) => (curr.score > prev.score ? curr : prev), state.players[0]);
     return h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: '12px', textAlign: 'center' } }, [
-      h('h1', { style: { fontSize: '22px' } }, `👑 ${winner.name} の勝利！`),
-      h('p', null, `🏆 ${winner.score} 点獲得`),
+      h('h1', { style: { fontSize: '22px', color: '#2d3748' } }, `👑 ${winner.name} の勝利！`),
+      h('p', { style: { color: '#4a5568' } }, `🏆 ${winner.score} 点獲得`),
       h('button', {
         onClick: () => setState(initGame()),
         className: 'btn btn-primary',
@@ -809,7 +809,7 @@ function App() {
         h('span', { className: `header-turn-badge ${isHuman ? 'turn-me' : 'turn-bot'}` }, `手番: ${p.name}`)
       ]),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, [
-        h('span', { style: { color: '#495057', fontSize: '12px' } }, `🎴 山札: ${state.deck.length}枚`),
+        h('span', { style: { color: '#718096', fontSize: '12px' } }, `🎴 山札: ${state.deck.length}枚`),
         h('span', { className: 'header-badge' }, `🏆 目標: ${WIN_SCORE}点`)
       ])
     ]),
@@ -856,8 +856,8 @@ function App() {
     h('div', { className: 'section' }, [
       h('div', { className: 'section-title' }, [
         h('span', null, `🎴 手札 (${me.hand.length}/${myHandLimit}枚)`),
-        isHuman && state.step === 1 && h('span', { style: { color: '#e03131' } }, 'カードを選んで進む'),
-        isHuman && state.step === 4 && h('span', { style: { color: '#7950f2' } }, `↩️ 戻すカードを選択 (${overflowSelectedIds.length}/${state.excessCount})`)
+        isHuman && state.step === 1 && h('span', { style: { color: '#9b2c2c', fontWeight: 'bold' } }, 'カードを選んで進む'),
+        isHuman && state.step === 4 && h('span', { style: { color: '#6b46c1', fontWeight: 'bold' } }, `↩️ 戻すカードを選択 (${overflowSelectedIds.length}/${state.excessCount})`)
       ]),
       h('div', { className: 'card-row' },
         me.hand.map((c, idx) => renderCard(
@@ -881,7 +881,7 @@ function App() {
     h('div', { className: 'section' }, [
       h('div', { className: 'section-title' }, [
         h('span', null, `🏆 得点: ${me.score} / ${WIN_SCORE}点`),
-        h('span', { style: { fontSize: '11px', color: '#6c757d' } },
+        h('span', { style: { fontSize: '11px', color: '#718096' } },
           `🎴上限Lv.${me.handLimitLv} | 📦枠Lv.${me.boxesLv} | 🏛️会所Lv.${me.guildLv}`
         )
       ]),
@@ -892,10 +892,10 @@ function App() {
         }, [
           h('div', { style: { display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' } }, [
             h('span', null, `📦 箱${idx + 1}`),
-            b.salt > 0 && h('span', { style: { color: '#1971c2' } }, `🧂×${b.salt}`)
+            b.salt > 0 && h('span', { style: { color: '#2b6cb0' } }, `🧂×${b.salt}`)
           ]),
           !b.unlocked ? (
-            h('span', { style: { textAlign: 'center', margin: 'auto 0', color: '#868e96' } }, '🔒 未解放')
+            h('span', { style: { textAlign: 'center', margin: 'auto 0', color: '#a0aec0' } }, '🔒 未解放')
           ) : b.cargo ? (
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', margin: 'auto 0' } }, [
               h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
@@ -906,16 +906,16 @@ function App() {
                   style: { padding: '2px 6px', fontSize: '10px' }
                 }, '⚓ 売却')
               ]),
-              h('div', { style: { fontSize: '10px', color: '#495057' } }, [
+              h('div', { style: { fontSize: '10px', color: '#4a5568' } }, [
                 b.cargo.salt > 0 && `🧂${b.cargo.salt} `,
                 b.cargo.porter > 0 && `🛞${b.cargo.porter} `,
                 b.cargo.pack > 0 && `📦${b.cargo.pack} `
               ])
             ])
           ) : b.salt > 0 ? (
-            h('span', { style: { fontSize: '10px', color: '#1971c2', fontWeight: 'bold', margin: 'auto 0' } }, '🏡 地元で得点化')
+            h('span', { style: { fontSize: '10px', color: '#2b6cb0', fontWeight: 'bold', margin: 'auto 0' } }, '🏡 地元で得点化')
           ) : (
-            h('span', { style: { textAlign: 'center', color: '#adb5bd', margin: 'auto 0' } }, '📦 空き')
+            h('span', { style: { textAlign: 'center', color: '#a0aec0', margin: 'auto 0' } }, '📦 空き')
           )
         ]))
       )
