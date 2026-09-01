@@ -6,38 +6,39 @@ const GOODS = {
   cloth: { name: '布', icon: '🧵', chip: 'chip-cloth', card: 'card-cloth' },
 };
 
+// 3-1-1-1-3 (端牌=3塩, 中張牌=1塩)
 const CARD_TEMPLATES = {
   tea: [
-    { num: 1, salt: 2, porter: 1, pack: 0 },
-    { num: 2, salt: 1, porter: 1, pack: 0 },
-    { num: 3, salt: 1, porter: 0, pack: 0 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 2, porter: 0, pack: 1 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ],
   rice: [
-    { num: 1, salt: 0, porter: 2, pack: 1 },
-    { num: 2, salt: 0, porter: 1, pack: 1 },
-    { num: 3, salt: 0, porter: 1, pack: 0 },
-    { num: 4, salt: 1, porter: 0, pack: 1 },
-    { num: 5, salt: 1, porter: 2, pack: 0 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ],
   cloth: [
-    { num: 1, salt: 1, porter: 0, pack: 2 },
-    { num: 2, salt: 1, porter: 0, pack: 1 },
-    { num: 3, salt: 0, porter: 0, pack: 1 },
-    { num: 4, salt: 1, porter: 1, pack: 0 },
-    { num: 5, salt: 0, porter: 1, pack: 2 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ]
 };
 
 const TILES = [
   { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品', costText: '1塩＝1点' },
   { pos: 1, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張', costText: '🛞2/4 📦2/4' },
+  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張', costText: '手札5/8塩 荷箱5/8塩' },
   { pos: 3, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 4, name: '港', icon: '⚓', isFacility: true, short: '売却', costText: '塩＋会所(+0/+3/+6)' },
   { pos: 5, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '🛞2📦2 / 🛞3📦3' },
+  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '5塩 / 8塩' },
   { pos: 7, name: '街道', icon: '🛣️', isFacility: false },
 ];
 
@@ -57,7 +58,7 @@ function createDeck() {
   ['tea', 'rice', 'cloth'].forEach(t => {
     CARD_TEMPLATES[t].forEach(tpl => {
       for (let i = 0; i < 4; i++) {
-        deck.push({ id: id++, type: t, num: tpl.num, salt: tpl.salt, porter: tpl.porter, pack: tpl.pack });
+        deck.push({ id: id++, type: t, num: tpl.num, salt: tpl.salt });
       }
     });
   });
@@ -71,43 +72,45 @@ function drawSafe(count, currentDeck, currentDiscard) {
 
   for (let i = 0; i < count; i++) {
     if (d.length === 0) {
-      if (disc.length === 0) break;
-      d = disc.sort(() => Math.random() - 0.5);
-      disc = [];
+      if (disc.length > 0) {
+        d = disc.sort(() => Math.random() - 0.5);
+        disc = [];
+      } else {
+        break;
+      }
     }
     if (d.length > 0) drawn.push(d.shift());
   }
   return { drawn, newDeck: d, newDiscard: disc };
 }
 
+// 刻子ボーナス +3点
 function evalSet(cards) {
   if (!cards || cards.length !== 3) return null;
   const t = cards[0].type;
   if (!cards.every(c => c.type === t)) return null;
 
   const nums = cards.map(c => c.num).sort((a, b) => a - b);
-  const salt = cards.reduce((s, c) => s + c.salt, 0);
-  const porter = cards.reduce((s, c) => s + c.porter, 0);
-  const pack = cards.reduce((s, c) => s + c.pack, 0);
+  const baseSalt = cards.reduce((s, c) => s + c.salt, 0);
 
+  // 同数3枚（刻子）: 基本塩 + 3塩ボーナス！
   if (nums[0] === nums[1] && nums[1] === nums[2]) {
     return {
-      name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}×3`,
-      shortName: `${GOODS[t].icon}${nums[0]}×3`,
-      salt,
-      porter,
-      pack,
+      name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}×3 (刻子)`,
+      shortName: `${GOODS[t].icon}${nums[0]}×3 (刻子)`,
+      salt: baseSalt + 3,
+      isTriplet: true,
       cards,
       type: t
     };
   }
+  // 連続3枚（順子）: 基本塩そのまま
   if (nums[0] + 1 === nums[1] && nums[1] + 1 === nums[2]) {
     return {
-      name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}-${nums[2]}`,
+      name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}-${nums[2]} (順子)`,
       shortName: `${GOODS[t].icon}${nums[0]}-${nums[2]}`,
-      salt,
-      porter,
-      pack,
+      salt: baseSalt,
+      isTriplet: false,
       cards,
       type: t
     };
@@ -128,7 +131,7 @@ function findSets(hand) {
         const r = evalSet(trio);
         if (r) {
           const numsKey = trio.map(c => c.num).sort((a, b) => a - b).join(',');
-          const patternKey = `${r.type}:${numsKey}:s${r.salt}:p${r.porter}:k${r.pack}`;
+          const patternKey = `${r.type}:${numsKey}:s${r.salt}`;
           if (!seenPatterns.has(patternKey)) {
             seenPatterns.add(patternKey);
             const key = trio.map(c => c.id).sort().join('-');
@@ -151,7 +154,7 @@ function evaluateHandValue(hand) {
     const ids = s.trio.map(c => c.id);
     if (!ids.some(id => usedCardIds.has(id))) {
       ids.forEach(id => usedCardIds.add(id));
-      value += 100 + s.info.salt * 10 + s.info.porter * 5 + s.info.pack * 5;
+      value += 100 + s.info.salt * 15;
     }
   });
 
@@ -165,9 +168,9 @@ function evaluateHandValue(hand) {
       for (let j = i + 1; j < list.length; j++) {
         const diff = Math.abs(list[i].num - list[j].num);
         if (diff === 0) {
-          value += 25; // 対子
+          value += 30; // 対子（刻子への期待値）
         } else if (diff === 1) {
-          value += (list[i].num === 1 || list[j].num === 5) ? 20 : 30; // 連続
+          value += (list[i].num === 1 || list[j].num === 5) ? 25 : 20; // 連続
         } else if (diff === 2) {
           value += 15; // 嵌張
         }
@@ -193,7 +196,8 @@ function initGame() {
   const d = createDeck();
   const players = PLAYERS_DEF.map((def, i) => ({
     id: i,
-    ...def,
+    name: def.name,
+    color: def.color,
     pos: 0,
     hand: d.splice(0, 5),
     boxes: [
@@ -213,7 +217,7 @@ function initGame() {
     road,
     players,
     turn: 0,
-    step: 1, // 1: 移動, 2: 行動＆補充, 4: 返却
+    step: 1, // 1: 移動, 2: 補充, 3: 行動, 4: 返却
     facilityUsed: false,
     gameOver: false,
     excessCount: 0
@@ -232,20 +236,15 @@ function App() {
   const myHandLimit = HAND_LIMITS[me.handLimitLv - 1];
 
   const mySets = useMemo(() => findSets(me.hand), [me.hand]);
-  const availablePorter = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0), [me.boxes]);
-  const availablePack = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0), [me.boxes]);
+  const availableCargoSalt = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0), [me.boxes]);
 
   // 選択された荷箱のリソース
   const selectedBoxes = useMemo(() => {
     return me.boxes.filter((b, idx) => selectedBoxIndices.includes(idx) && b.cargo);
   }, [me.boxes, selectedBoxIndices]);
 
-  const selectedPorter = useMemo(() => {
-    return selectedBoxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
-  }, [selectedBoxes]);
-
-  const selectedPack = useMemo(() => {
-    return selectedBoxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
+  const selectedCargoSalt = useMemo(() => {
+    return selectedBoxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
   }, [selectedBoxes]);
 
   // 荷箱選択トグル
@@ -319,27 +318,6 @@ function App() {
     setState(prev => ({ ...prev, players: newPlayers }));
   };
 
-  // 荷箱にセットを置く（自動検出セット用）
-  const handlePackSet = (setObj) => {
-    const emptyIdx = me.boxes.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
-    if (emptyIdx === -1 || !setObj || state.step !== 3) return;
-
-    const ids = setObj.trio.map(c => c.id);
-    const remainingHand = me.hand.filter(c => !ids.includes(c.id));
-
-    const newPlayers = state.players.map((pl, i) => {
-      if (i !== 0) return pl;
-      return {
-        ...pl,
-        hand: remainingHand,
-        boxes: pl.boxes.map((b, bI) => bI === emptyIdx ? { ...b, cargo: setObj.info } : b)
-      };
-    });
-
-    setSelectedHandIds([]);
-    setState(prev => ({ ...prev, players: newPlayers }));
-  };
-
   // 港での個別売却
   const handlePortSellBox = (boxIdx) => {
     const box = me.boxes[boxIdx];
@@ -378,19 +356,20 @@ function App() {
         players: prev.players.map((pl, i) => i === 0 ? { ...pl, score: newScore, boxes: newBoxes } : pl)
       }));
     }
-    // 2: 箱屋
+    // 2: 箱屋 (拡張: 手札5/8塩, 荷箱5/8塩)
     else if (pos === 2) {
+      const useSelected = selectedBoxIndices.length > 0;
+      const saltToUse = useSelected ? selectedCargoSalt : availableCargoSalt;
+
       if (type === 'handLimit' && me.handLimitLv < 3) {
-        const cost = me.handLimitLv === 1 ? 2 : 4;
-        const useSelected = selectedBoxIndices.length > 0;
-        const porterToUse = useSelected ? selectedPorter : availablePorter;
-        if (porterToUse < cost) return;
+        const cost = me.handLimitLv === 1 ? 5 : 8;
+        if (saltToUse < cost) return;
 
         let rem = cost;
         const returnedCards = [];
         const newBoxes = me.boxes.map((b, idx) => {
           if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
-            rem -= b.cargo.porter;
+            rem -= b.cargo.salt;
             if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
             return { ...b, cargo: null };
           }
@@ -404,17 +383,15 @@ function App() {
           players: prev.players.map((pl, i) => i === 0 ? { ...pl, handLimitLv: pl.handLimitLv + 1, boxes: newBoxes } : pl)
         }));
       } else if (type === 'boxes' && me.boxesLv < 3) {
-        const cost = me.boxesLv === 1 ? 2 : 4;
-        const useSelected = selectedBoxIndices.length > 0;
-        const packToUse = useSelected ? selectedPack : availablePack;
-        if (packToUse < cost) return;
+        const cost = me.boxesLv === 1 ? 5 : 8;
+        if (saltToUse < cost) return;
 
         let rem = cost;
         const returnedCards = [];
         const newBoxes = me.boxes.map((b, idx) => {
           if (idx === me.boxesLv) return { ...b, unlocked: true };
           if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
-            rem -= b.cargo.pack;
+            rem -= b.cargo.salt;
             if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
             return { ...b, cargo: null };
           }
@@ -429,22 +406,18 @@ function App() {
         }));
       }
     }
-    // 6: 会所
+    // 6: 会所 (強化: 5塩/8塩)
     else if (pos === 6 && type === 'guild' && me.guildLv < 3) {
-      const reqP = me.guildLv === 1 ? 2 : 3;
-      const reqK = me.guildLv === 1 ? 2 : 3;
+      const cost = me.guildLv === 1 ? 5 : 8;
       const useSelected = selectedBoxIndices.length > 0;
-      const porterToUse = useSelected ? selectedPorter : availablePorter;
-      const packToUse = useSelected ? selectedPack : availablePack;
-      if (porterToUse < reqP || packToUse < reqK) return;
+      const saltToUse = useSelected ? selectedCargoSalt : availableCargoSalt;
+      if (saltToUse < cost) return;
 
-      let remP = reqP;
-      let remK = reqK;
+      let rem = cost;
       const returnedCards = [];
       const newBoxes = me.boxes.map((b, idx) => {
-        if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && (remP > 0 || remK > 0)) {
-          remP -= b.cargo.porter;
-          remK -= b.cargo.pack;
+        if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
+          rem -= b.cargo.salt;
           if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
           return { ...b, cargo: null };
         }
@@ -547,7 +520,7 @@ function App() {
     }));
   };
 
-  // BOT loop (高度な戦略AI: 牌効率・ルート計画・施設拡大)
+  // BOT loop
   useEffect(() => {
     if (state.gameOver || state.turn === 0) return;
 
@@ -563,7 +536,7 @@ function App() {
         const totalSalt = curr.boxes.reduce((s, b) => s + (b.salt || 0), 0);
         const hasSalt = totalSalt > 0;
         const hasCargo = curr.boxes.some(b => b.cargo);
-        const cargoCount = curr.boxes.filter(b => b.cargo).length;
+        const availableCargo = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
 
         let bestScore = -99999;
         let bestIdx = 0;
@@ -572,45 +545,37 @@ function App() {
           const target = (curr.pos + c.num) % 8;
           let score = 0;
 
-          // 1. 手札効率（不要なカードほど出しやすい）
           const pInfo = priorities.find(p => p.idx === idx);
           const discardEfficiency = 100 - (pInfo ? pInfo.loss : 50);
           score += discardEfficiency * 0.9;
 
-          // 2. 目的地の戦略的価値
           if (target === 0) {
             if (hasSalt) {
               score += 180 + totalSalt * 25;
-              if (curr.score + totalSalt >= WIN_SCORE) score += 2000; // 勝ち確！
+              if (curr.score + totalSalt >= WIN_SCORE) score += 2000;
             } else {
               score -= 20;
             }
           } else if (target === 4) {
             if (hasCargo) {
-              const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 2 : 4;
+              const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
               const expectedSalt = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt + bonus : 0), 0);
-              score += 140 + expectedSalt * 15 + cargoCount * 30;
+              score += 140 + expectedSalt * 15;
             } else {
               score -= 25;
             }
           } else if (target === 2) {
-            const availablePorter = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
-            const availablePack = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
-            if (curr.handLimitLv === 1 && availablePorter >= 2) score += 120;
-            else if (curr.handLimitLv === 2 && availablePorter >= 4) score += 70;
-            if (curr.boxesLv === 1 && availablePack >= 2) score += 130;
-            else if (curr.boxesLv === 2 && availablePack >= 4) score += 80;
+            if (curr.handLimitLv === 1 && availableCargo >= 5) score += 140;
+            else if (curr.handLimitLv === 2 && availableCargo >= 8) score += 80;
+            if (curr.boxesLv === 1 && availableCargo >= 5) score += 150;
+            else if (curr.boxesLv === 2 && availableCargo >= 8) score += 90;
           } else if (target === 6) {
-            const reqP = curr.guildLv === 1 ? 1 : 2;
-            const reqK = curr.guildLv === 1 ? 1 : 2;
-            const availablePorter = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
-            const availablePack = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
-            if (curr.guildLv < 3 && availablePorter >= reqP && availablePack >= reqK) {
-              score += (curr.guildLv === 1 ? 120 : 80);
+            const cost = curr.guildLv === 1 ? 5 : 8;
+            if (curr.guildLv < 3 && availableCargo >= cost) {
+              score += (curr.guildLv === 1 ? 140 : 90);
             }
           }
 
-          // 街道カード回収の期待値
           const roadStack = state.road[target] || [];
           if (roadStack.length > 0) {
             const handWithRoad = [...hList.filter((_, i) => i !== idx), ...roadStack];
@@ -618,7 +583,6 @@ function App() {
             score += roadStack.length * 8 + Math.max(0, gain) * 0.4;
           }
 
-          // ルート進行ボーナス
           if (hasCargo && !hasSalt) {
             const distToPort = (4 - target + 8) % 8;
             score += (8 - distToPort) * 8;
@@ -655,30 +619,22 @@ function App() {
         let newDiscard = [...state.discard];
         let hnd = [...curr.hand];
 
-        // 1. 補充（マス全回収 vs 山札ドローを賢く選択）
         let newRoad = state.road;
         let newDeck = state.deck;
         const roadStack = state.road[curr.pos] || [];
 
         let shouldTakeRoad = false;
         if (roadStack.length > 0) {
-          const currentVal = evaluateHandValue(hnd);
-          const withRoadVal = evaluateHandValue([...hnd, ...roadStack]);
           const setsBefore = findSets(hnd).length;
           const setsAfter = findSets([...hnd, ...roadStack]).length;
-
-          if (setsAfter > setsBefore) shouldTakeRoad = true;
-          else if (roadStack.length >= 2 && withRoadVal > currentVal) shouldTakeRoad = true;
-          else if (roadStack.length >= 3) shouldTakeRoad = true;
+          if (setsAfter > setsBefore || roadStack.length >= 2 || hnd.length < 3) shouldTakeRoad = true;
         }
 
         if (shouldTakeRoad) {
           const combined = [...hnd, ...roadStack];
           newRoad = state.road.map((arr, i) => i === curr.pos ? [] : arr);
-
           if (combined.length > botHandLimit) {
             const excess = combined.length - botHandLimit;
-            // 不要牌から順に戻す
             const priorities = getCardDiscardPriorities(combined);
             const returnIds = priorities.slice(0, excess).map(p => p.card.id);
             const toReturn = combined.filter(c => returnIds.includes(c.id));
@@ -695,16 +651,13 @@ function App() {
           newDiscard = res.newDiscard;
         }
 
-        // 2. 施設アクション
-        // 0: 地元
+        // 施設アクション
         if (curr.pos === 0) {
           bxs = bxs.map(b => {
             if (b.salt > 0) sc += b.salt;
             return { ...b, cargo: null, salt: 0 };
           });
-        }
-        // 4: 港
-        else if (curr.pos === 4) {
+        } else if (curr.pos === 4) {
           const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
           bxs = bxs.map(b => {
             if (b.unlocked && b.cargo) {
@@ -714,17 +667,15 @@ function App() {
             }
             return b;
           });
-        }
-        // 2: 箱屋
-        else if (curr.pos === 2) {
+        } else if (curr.pos === 2) {
+          const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
           if (curr.handLimitLv < 3) {
-            const cost = curr.handLimitLv === 1 ? 2 : 4;
-            const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
-            if (totalPorter >= cost) {
+            const cost = curr.handLimitLv === 1 ? 5 : 8;
+            if (availableCargo >= cost) {
               let rem = cost;
               bxs = bxs.map(b => {
                 if (b.cargo && rem > 0) {
-                  rem -= b.cargo.porter;
+                  rem -= b.cargo.salt;
                   if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
                   return { ...b, cargo: null };
                 }
@@ -734,14 +685,14 @@ function App() {
             }
           }
           if (curr.boxesLv < 3) {
-            const cost = curr.boxesLv === 1 ? 2 : 4;
-            const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
-            if (totalPack >= cost) {
+            const cost = curr.boxesLv === 1 ? 5 : 8;
+            const updatedCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
+            if (updatedCargo >= cost) {
               let rem = cost;
               bxs = bxs.map((b, idx) => {
                 if (idx === curr.boxesLv) return { ...b, unlocked: true };
                 if (b.cargo && rem > 0) {
-                  rem -= b.cargo.pack;
+                  rem -= b.cargo.salt;
                   if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
                   return { ...b, cargo: null };
                 }
@@ -750,20 +701,14 @@ function App() {
               curr.boxesLv += 1;
             }
           }
-        }
-        // 6: 会所
-        else if (curr.pos === 6 && curr.guildLv < 3) {
-          const reqP = curr.guildLv === 1 ? 2 : 3;
-          const reqK = curr.guildLv === 1 ? 2 : 3;
-          const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
-          const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
-          if (totalPorter >= reqP && totalPack >= reqK) {
-            let remP = reqP;
-            let remK = reqK;
+        } else if (curr.pos === 6 && curr.guildLv < 3) {
+          const cost = curr.guildLv === 1 ? 5 : 8;
+          const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
+          if (availableCargo >= cost) {
+            let rem = cost;
             bxs = bxs.map(b => {
-              if (b.cargo && (remP > 0 || remK > 0)) {
-                remP -= b.cargo.porter;
-                remK -= b.cargo.pack;
+              if (b.cargo && rem > 0) {
+                rem -= b.cargo.salt;
                 if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
                 return { ...b, cargo: null };
               }
@@ -773,7 +718,7 @@ function App() {
           }
         }
 
-        // 3. セットを置く（補充後の手札から積む。空き枠がある限り積む）
+        // セットを積む
         while (true) {
           const sets = findSets(hnd);
           const emptyIdx = bxs.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
@@ -787,7 +732,6 @@ function App() {
           }
         }
 
-        // 4. 手番終了
         const nextTurn = (state.turn + 1) % 4;
         const newPlayers = state.players.map((pl, i) => i === state.turn ? {
           ...pl,
@@ -826,9 +770,7 @@ function App() {
         h('span', { className: 'card-icon-main' }, meta.icon)
       ]),
       h('div', { className: 'card-res-container' }, [
-        c.salt > 0 && h('span', { className: 'res-pill res-salt' }, `🧂${c.salt}`),
-        c.porter > 0 && h('span', { className: 'res-pill res-porter' }, `🛞${c.porter}`),
-        c.pack > 0 && h('span', { className: 'res-pill res-pack' }, `📦${c.pack}`)
+        h('span', { className: 'res-pill res-salt' }, `🧂${c.salt}`)
       ])
     ]);
   };
@@ -871,7 +813,6 @@ function App() {
         }, pl.id === 0 ? '自' : `B${pl.id}`))
       ),
 
-      // 落ちているカード表示
       h('div', { className: 'tile-cards' },
         roadCards.length === 0 ? (
           h('span', { className: 'tile-empty' }, '-')
@@ -901,72 +842,59 @@ function App() {
 
     // Step 2: 補充
     if (state.step === 2) {
-      const roadCount = (state.road[p.pos] || []).length;
+      const roadCards = state.road[p.pos] || [];
+      const hasRoadCards = roadCards.length > 0;
       return h('div', { className: 'center-hub step-2' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#1971c2' } }, '🎴【2. 補充】'),
-        h('div', { style: { display: 'flex', gap: '4px', width: '100%' } }, [
+        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: '#1971c2', marginBottom: '4px' } }, '🎴【2. 手札補充】'),
+        h('div', { style: { display: 'flex', gap: '6px', width: '100%' } }, [
           h('button', {
             onClick: handleReplenishDeck,
             className: 'btn btn-primary',
-            style: { flex: 1, fontSize: '10px', padding: '6px 2px' }
-          }, `① 🎴 山札引く`),
+            style: { flex: 1, fontSize: '10px', padding: '6px 4px' }
+          }, `山札引く (${state.deck.length}枚)`),
           h('button', {
-            disabled: roadCount === 0,
             onClick: handleReplenishRoad,
-            className: 'btn btn-purple',
-            style: { flex: 1, fontSize: '10px', padding: '6px 2px' }
-          }, `② 🖐️ 全回収(${roadCount})`)
+            disabled: !hasRoadCards,
+            className: 'btn btn-warning',
+            style: { flex: 1, fontSize: '10px', padding: '6px 4px' }
+          }, `マス回収 (${roadCards.length}枚)`)
         ])
       ]);
     }
 
-    // Step 4: 返却
+    // Step 4: 超過返却
     if (state.step === 4) {
+      const needed = state.excessCount;
+      const current = overflowSelectedIds.length;
       return h('div', { className: 'center-hub step-4' }, [
-        h('div', { style: { fontSize: '11px', fontWeight: 'bold', color: '#6b46c1' } }, `↩️ ${overflowSelectedIds.length}/${state.excessCount}枚 選択中`),
+        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#6b46c1' } }, '⚠️【手札超過】'),
+        h('div', { style: { fontSize: '10px', color: '#4a5568' } }, `不要な手札を ${needed} 枚選んで戻す`),
         h('button', {
-          disabled: overflowSelectedIds.length !== state.excessCount,
+          disabled: current !== needed,
           onClick: handleConfirmExcess,
           className: 'btn btn-purple',
-          style: { width: '100%' }
-        }, '戻すのを確定')
+          style: { width: '100%', fontSize: '10px', padding: '4px 6px', marginTop: '2px' }
+        }, `現在地に戻す (${current}/${needed})`)
       ]);
     }
 
-    // Step 3: 行動 ＆ 手番終了
+    // Step 3: 行動（荷箱積み＆施設利用）
     if (state.step === 3) {
-      const hasEmptyBox = me.boxes.some(b => b.unlocked && !b.cargo && b.salt === 0);
-
+      const saltToUse = selectedBoxIndices.length > 0 ? selectedCargoSalt : availableCargoSalt;
       return h('div', { className: 'center-hub step-3' }, [
-        h('div', { className: 'center-actions' }, [
-          // 選択した3枚を積む
-          selectedSetInfo && hasEmptyBox && (
-            h('button', {
-              onClick: handlePackSelectedCards,
-              className: 'btn btn-success',
-              style: { width: '100%', fontSize: '11px', padding: '4px 6px', fontWeight: 'bold' }
-            }, `📦 ${selectedSetInfo.name} を積む`)
-          ),
+        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', display: 'flex', justifyContent: 'space-between', width: '100%' } }, [
+          h('span', null, '⚡【3. 行動】'),
+          h('span', { style: { fontSize: '10px', color: '#4a5568' } }, `${TILES[p.pos].name}`)
+        ]),
 
-          // 自動検出セットをクイックに積む（手札未選択時）
-          !selectedSetInfo && mySets.length > 0 && hasEmptyBox && (
-            h('div', { style: { display: 'flex', gap: '3px', flexDirection: 'column', width: '100%' } },
-              mySets.map(s => h('button', {
-                key: s.key,
-                onClick: () => handlePackSet(s),
-                className: 'btn btn-success',
-                style: { width: '100%', fontSize: '10px', padding: '3px 4px', fontWeight: 'bold' }
-              }, `📦 ${s.info.name} を積む`))
-            )
-          ),
-
-          // 施設アクション
+        // 施設利用ボタン群
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
           p.pos === 0 && (
             me.boxes.some(b => b.salt > 0) ? (
               h('button', {
-                onClick: () => handleFacility(),
-                className: 'btn btn-danger',
-                style: { width: '100%', fontSize: '10px', padding: '4px 6px' }
+                onClick: () => handleFacility('deliver'),
+                className: 'btn btn-success',
+                style: { width: '100%', fontSize: '11px', padding: '5px 4px', fontWeight: 'bold' }
               }, `🏡 🧂得点化 (+${me.boxes.reduce((s,b)=>s+b.salt,0)} 🏆)`)
             ) : null
           ),
@@ -974,26 +902,26 @@ function App() {
           p.pos === 2 && (
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
               selectedBoxIndices.length > 0 && h('div', { style: { fontSize: '10px', color: '#b26b00', fontWeight: 'bold', textAlign: 'center' } },
-                `📦 箱選択中: 🛞${selectedPorter} / 📦${selectedPack}`
+                `📦 箱選択中: 🧂${selectedCargoSalt}`
               ),
               h('div', { style: { display: 'flex', gap: '3px', width: '100%' } }, [
                 me.handLimitLv < 3 && h('button', {
-                  disabled: (selectedBoxIndices.length > 0 ? selectedPorter : availablePorter) < (me.handLimitLv === 1 ? 2 : 4),
+                  disabled: saltToUse < (me.handLimitLv === 1 ? 5 : 8),
                   onClick: () => handleFacility('handLimit'),
                   className: 'btn btn-warning',
                   style: { flex: 1, fontSize: '9px', padding: '4px 2px' }
                 }, selectedBoxIndices.length > 0
-                  ? `選択箱で🎴上限+1(🛞${me.handLimitLv === 1 ? 2 : 4})`
-                  : `🎴上限+1(🛞${me.handLimitLv === 1 ? 2 : 4})`
+                  ? `選択箱で🎴上限+1(🧂${me.handLimitLv === 1 ? 5 : 8})`
+                  : `🎴上限+1(🧂${me.handLimitLv === 1 ? 5 : 8})`
                 ),
                 me.boxesLv < 3 && h('button', {
-                  disabled: (selectedBoxIndices.length > 0 ? selectedPack : availablePack) < (me.boxesLv === 1 ? 2 : 4),
+                  disabled: saltToUse < (me.boxesLv === 1 ? 5 : 8),
                   onClick: () => handleFacility('boxes'),
                   className: 'btn btn-purple',
                   style: { flex: 1, fontSize: '9px', padding: '4px 2px' }
                 }, selectedBoxIndices.length > 0
-                  ? `選択箱で📦枠+1(📦${me.boxesLv === 1 ? 2 : 4})`
-                  : `📦枠+1(📦${me.boxesLv === 1 ? 2 : 4})`
+                  ? `選択箱で📦枠+1(🧂${me.boxesLv === 1 ? 5 : 8})`
+                  : `📦枠+1(🧂${me.boxesLv === 1 ? 5 : 8})`
                 )
               ])
             ])
@@ -1021,17 +949,16 @@ function App() {
           p.pos === 6 && me.guildLv < 3 && (
             h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' } }, [
               selectedBoxIndices.length > 0 && h('div', { style: { fontSize: '10px', color: '#2b8a3e', fontWeight: 'bold', textAlign: 'center' } },
-                `📦 箱選択中: 🛞${selectedPorter} / 📦${selectedPack}`
+                `📦 箱選択中: 🧂${selectedCargoSalt}`
               ),
               h('button', {
-                disabled: (selectedBoxIndices.length > 0 ? selectedPorter : availablePorter) < (me.guildLv === 1 ? 2 : 3) ||
-                          (selectedBoxIndices.length > 0 ? selectedPack : availablePack) < (me.guildLv === 1 ? 2 : 3),
+                disabled: saltToUse < (me.guildLv === 1 ? 5 : 8),
                 onClick: () => handleFacility('guild'),
                 className: 'btn btn-success',
                 style: { width: '100%', fontSize: '10px', padding: '4px 6px' }
               }, selectedBoxIndices.length > 0
-                ? `選択箱で🏛️会所Lv+1 (🛞${me.guildLv===1?2:3}+📦${me.guildLv===1?2:3})`
-                : `🏛️ 会所Lv+1 (🛞${me.guildLv===1?2:3}+📦${me.guildLv===1?2:3})`
+                ? `選択箱で🏛️会所Lv+1 (🧂${me.guildLv===1?5:8})`
+                : `🏛️ 会所Lv+1 (🧂${me.guildLv===1?5:8})`
               )
             ])
           )
@@ -1215,9 +1142,7 @@ function App() {
                   }, '⚓ 売却')
                 ]),
                 h('div', { style: { fontSize: '10px', color: '#4a5568' } }, [
-                  b.cargo.salt > 0 && `🧂${b.cargo.salt} `,
-                  b.cargo.porter > 0 && `🛞${b.cargo.porter} `,
-                  b.cargo.pack > 0 && `📦${b.cargo.pack} `
+                  `🧂${b.cargo.salt}`
                 ])
               ])
             ) : b.salt > 0 ? (

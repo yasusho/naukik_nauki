@@ -3,36 +3,37 @@
  * 
  * 実行方法:
  *   node simulate.js
- *   node simulate.js --games 2000 --matchup smart_vs_legacy
+ *   node simulate.js --games 2000 --matchup smart_vs_random
  */
 
 const GOODS = {
-  tea: { name: '茶', saltRate: 2, porterRate: 0, packRate: 0 },
-  rice: { name: '米', saltRate: 0, porterRate: 2, packRate: 0 },
-  cloth: { name: '布', saltRate: 0, porterRate: 0, packRate: 2 },
+  tea: { name: '茶' },
+  rice: { name: '米' },
+  cloth: { name: '布' },
 };
 
+// 3-1-1-1-3 (端牌=3塩, 中張牌=1塩)
 const CARD_TEMPLATES = {
   tea: [
-    { num: 1, salt: 2, porter: 1, pack: 0 },
-    { num: 2, salt: 1, porter: 1, pack: 0 },
-    { num: 3, salt: 1, porter: 0, pack: 0 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 2, porter: 0, pack: 1 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ],
   rice: [
-    { num: 1, salt: 0, porter: 2, pack: 1 },
-    { num: 2, salt: 0, porter: 1, pack: 1 },
-    { num: 3, salt: 0, porter: 1, pack: 0 },
-    { num: 4, salt: 1, porter: 0, pack: 1 },
-    { num: 5, salt: 1, porter: 2, pack: 0 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ],
   cloth: [
-    { num: 1, salt: 1, porter: 0, pack: 2 },
-    { num: 2, salt: 1, porter: 0, pack: 1 },
-    { num: 3, salt: 0, porter: 0, pack: 1 },
-    { num: 4, salt: 1, porter: 1, pack: 0 },
-    { num: 5, salt: 0, porter: 1, pack: 2 },
+    { num: 1, salt: 3 },
+    { num: 2, salt: 1 },
+    { num: 3, salt: 1 },
+    { num: 4, salt: 1 },
+    { num: 5, salt: 3 },
   ]
 };
 
@@ -45,7 +46,7 @@ function createDeck() {
   ['tea', 'rice', 'cloth'].forEach(t => {
     CARD_TEMPLATES[t].forEach(tpl => {
       for (let i = 0; i < 4; i++) {
-        deck.push({ id: id++, type: t, num: tpl.num, salt: tpl.salt, porter: tpl.porter, pack: tpl.pack });
+        deck.push({ id: id++, type: t, num: tpl.num, salt: tpl.salt });
       }
     });
   });
@@ -59,41 +60,43 @@ function drawSafe(count, currentDeck, currentDiscard) {
 
   for (let i = 0; i < count; i++) {
     if (d.length === 0) {
-      if (disc.length === 0) break;
-      d = disc.sort(() => Math.random() - 0.5);
-      disc = [];
+      if (disc.length > 0) {
+        d = disc.sort(() => Math.random() - 0.5);
+        disc = [];
+      } else {
+        break;
+      }
     }
     if (d.length > 0) drawn.push(d.shift());
   }
   return { drawn, newDeck: d, newDiscard: disc };
 }
 
+// 刻子ボーナス +3点
 function evalSet(cards) {
   if (!cards || cards.length !== 3) return null;
   const t = cards[0].type;
   if (!cards.every(c => c.type === t)) return null;
 
   const nums = cards.map(c => c.num).sort((a, b) => a - b);
-  const salt = cards.reduce((s, c) => s + c.salt, 0);
-  const porter = cards.reduce((s, c) => s + c.porter, 0);
-  const pack = cards.reduce((s, c) => s + c.pack, 0);
+  const baseSalt = cards.reduce((s, c) => s + c.salt, 0);
 
+  // 同数3枚（刻子）: 基本塩 + 3塩ボーナス！
   if (nums[0] === nums[1] && nums[1] === nums[2]) {
     return {
-      name: `${t} ${nums[0]}×3`,
-      salt,
-      porter,
-      pack,
+      name: `${t} ${nums[0]}×3 (刻子)`,
+      salt: baseSalt + 3,
+      isTriplet: true,
       cards,
       type: t
     };
   }
+  // 連続3枚（順子）: 基本塩そのまま
   if (nums[0] + 1 === nums[1] && nums[1] + 1 === nums[2]) {
     return {
-      name: `${t} ${nums[0]}-${nums[2]}`,
-      salt,
-      porter,
-      pack,
+      name: `${t} ${nums[0]}-${nums[2]} (順子)`,
+      salt: baseSalt,
+      isTriplet: false,
       cards,
       type: t
     };
@@ -114,7 +117,7 @@ function findSets(hand) {
         const r = evalSet(trio);
         if (r) {
           const numsKey = trio.map(c => c.num).sort((a, b) => a - b).join(',');
-          const patternKey = `${r.type}:${numsKey}:s${r.salt}:p${r.porter}:k${r.pack}`;
+          const patternKey = `${r.type}:${numsKey}:s${r.salt}`;
           if (!seenPatterns.has(patternKey)) {
             seenPatterns.add(patternKey);
             const key = trio.map(c => c.id).sort().join('-');
@@ -127,9 +130,8 @@ function findSets(hand) {
   return list;
 }
 
-// ----------------------------------------------------
-// 牌効率・手札価値評価（戦略ごとの重視リソースに対応）
-function evaluateHandValue(hand, weights = { salt: 10, porter: 5, pack: 5, tea: 1, rice: 1, cloth: 1 }) {
+// 牌効率・手札価値評価
+function evaluateHandValue(hand, weights = { salt: 10, tea: 1, rice: 1, cloth: 1 }) {
   if (!hand || hand.length === 0) return 0;
   const sets = findSets(hand);
   let value = 0;
@@ -139,8 +141,8 @@ function evaluateHandValue(hand, weights = { salt: 10, porter: 5, pack: 5, tea: 
     const ids = s.trio.map(c => c.id);
     if (!ids.some(id => usedCardIds.has(id))) {
       ids.forEach(id => usedCardIds.add(id));
-      const typeBonus = (weights[s.info.type] || 1) * 20;
-      value += 100 + typeBonus + s.info.salt * weights.salt + s.info.porter * weights.porter + s.info.pack * weights.pack;
+      const typeBonus = (weights[s.info.type] || 1) * 15;
+      value += 100 + typeBonus + s.info.salt * weights.salt;
     }
   });
 
@@ -150,19 +152,23 @@ function evaluateHandValue(hand, weights = { salt: 10, porter: 5, pack: 5, tea: 
 
   Object.keys(byType).forEach(t => {
     const list = byType[t].sort((a, b) => a.num - b.num);
-    const pref = (weights[t] || 1);
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const diff = Math.abs(list[i].num - list[j].num);
-        if (diff === 0) value += 25 * pref;
-        else if (diff === 1) value += ((list[i].num === 1 || list[j].num === 5) ? 20 : 30) * pref;
-        else if (diff === 2) value += 15 * pref;
+        if (diff === 0) {
+          value += 30; // 対子
+        } else if (diff === 1) {
+          value += (list[i].num === 1 || list[j].num === 5) ? 25 : 20; // 連続
+        } else if (diff === 2) {
+          value += 15; // 嵌張
+        }
       }
     }
   });
   return value;
 }
 
+// 不要牌の優先度算出
 function getCardDiscardPriorities(hand, weights) {
   if (!hand || hand.length === 0) return [];
   const baseValue = evaluateHandValue(hand, weights);
@@ -174,12 +180,8 @@ function getCardDiscardPriorities(hand, weights) {
   }).sort((a, b) => a.loss - b.loss);
 }
 
-
-// ----------------------------------------------------
-// 4大戦略ビルド（同等実力ベース）
-// ----------------------------------------------------
-
-function createBaseStrategy(name, weights, customLogic) {
+// 戦略ファクトリー
+function createBaseStrategy(name, weights, behavior) {
   return {
     name,
     weights,
@@ -200,35 +202,32 @@ function createBaseStrategy(name, weights, customLogic) {
         const target = (player.pos + c.num) % 8;
         let score = 0;
 
-        // 1. 共通: 手札効率（不要牌ほど出しやすい）
         const pInfo = priorities.find(p => p.idx === idx);
-        score += (100 - (pInfo ? pInfo.loss : 50)) * 0.9;
+        const discardEfficiency = 100 - (pInfo ? pInfo.loss : 50);
+        score += discardEfficiency * 0.9;
 
-        // 2. 共通: 地元(0)への塩納品
+        // 目的地の価値
         if (target === 0) {
           if (hasSalt) {
             score += 180 + totalSalt * 25;
             if (player.score + totalSalt >= WIN_SCORE) score += 2000;
           } else {
-            score -= 15;
+            score -= 20;
           }
-        }
-
-        // 3. 共通: 港(4)での売却
-        else if (target === 4) {
+        } else if (target === 4) {
           if (hasCargo) {
             const bonus = player.guildLv === 1 ? 0 : player.guildLv === 2 ? 3 : 6;
             const expectedSalt = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt + bonus : 0), 0);
-            score += 140 + expectedSalt * 15 + cargoCount * 30;
+            score += 140 + expectedSalt * 15 + cargoCount * 20;
           } else {
-            score -= 20;
+            score -= 25;
           }
         }
 
-        // 4. 戦略固有の目的地ボーナス
-        score += customLogic.getTargetBonus(target, player, state);
+        if (behavior.getTargetBonus) {
+          score += behavior.getTargetBonus(target, player, state);
+        }
 
-        // 5. 共通: 街道カード回収の期待値
         const roadStack = state.road[target] || [];
         if (roadStack.length > 0) {
           const handWithRoad = [...hList.filter((_, i) => i !== idx), ...roadStack];
@@ -236,7 +235,6 @@ function createBaseStrategy(name, weights, customLogic) {
           score += roadStack.length * 8 + Math.max(0, gain) * 0.4;
         }
 
-        // 6. 共通: 進行方向のルートボーナス
         if (hasCargo && !hasSalt) {
           const distToPort = (4 - target + 8) % 8;
           score += (8 - distToPort) * 8;
@@ -272,20 +270,26 @@ function createBaseStrategy(name, weights, customLogic) {
     chooseExcessReturns(player, excessCount) {
       const priorities = getCardDiscardPriorities(player.hand, weights);
       return priorities.slice(0, excessCount).map(p => p.card.id);
+    },
+
+    decideCargoLoading(player, availableSets) {
+      const emptySlots = player.boxes.filter(b => b.unlocked && !b.cargo && b.salt === 0).length;
+      if (emptySlots === 0 || availableSets.length === 0) return [];
+      return availableSets.slice(0, emptySlots);
     }
   };
 }
 
-// 1. 手札拡張特化型 (HandLimit Build)
+// 1. 手札拡張型 (HandLimit Build)
 const HandLimitBot = createBaseStrategy(
   '手札拡張型',
-  { salt: 8, porter: 15, pack: 4, tea: 0.8, rice: 2.0, cloth: 0.8 },
+  { salt: 10, tea: 1.0, rice: 1.5, cloth: 1.0 },
   {
     getTargetBonus(target, player, state) {
       if (target === 2 && player.handLimitLv < 3) {
-        const availablePorter = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
-        const cost = player.handLimitLv === 1 ? 2 : 4;
-        if (availablePorter >= cost) return 180;
+        const availableCargo = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
+        const cost = player.handLimitLv === 1 ? 5 : 8;
+        if (availableCargo >= cost) return 180;
         return 60;
       }
       return 0;
@@ -293,16 +297,16 @@ const HandLimitBot = createBaseStrategy(
   }
 );
 
-// 2. 荷箱枠特化型 (CargoBoxes Build)
+// 2. 荷箱特化型 (CargoBoxes Build)
 const CargoBoxesBot = createBaseStrategy(
   '荷箱特化型',
-  { salt: 8, porter: 4, pack: 15, tea: 0.8, rice: 0.8, cloth: 2.0 },
+  { salt: 10, tea: 1.0, rice: 1.0, cloth: 1.5 },
   {
     getTargetBonus(target, player, state) {
       if (target === 2 && player.boxesLv < 3) {
-        const availablePack = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
-        const cost = player.boxesLv === 1 ? 2 : 4;
-        if (availablePack >= cost) return 190;
+        const availableCargo = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
+        const cost = player.boxesLv === 1 ? 5 : 8;
+        if (availableCargo >= cost) return 190;
         return 70;
       }
       return 0;
@@ -310,18 +314,16 @@ const CargoBoxesBot = createBaseStrategy(
   }
 );
 
-// 3. 会所ブースト型 (GuildBonus Build)
+// 3. 会所特化型 (GuildBonus Build)
 const GuildBonusBot = createBaseStrategy(
   '会所特化型',
-  { salt: 10, porter: 10, pack: 10, tea: 1.0, rice: 1.5, cloth: 1.5 },
+  { salt: 12, tea: 1.0, rice: 1.2, cloth: 1.2 },
   {
     getTargetBonus(target, player, state) {
       if (target === 6 && player.guildLv < 3) {
-        const reqP = player.guildLv === 1 ? 2 : 3;
-        const reqK = player.guildLv === 1 ? 2 : 3;
-        const availablePorter = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
-        const availablePack = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
-        if (availablePorter >= reqP && availablePack >= reqK) return 185;
+        const cost = player.guildLv === 1 ? 5 : 8;
+        const availableCargo = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
+        if (availableCargo >= cost) return 185;
         return 65;
       }
       return 0;
@@ -329,16 +331,16 @@ const GuildBonusBot = createBaseStrategy(
   }
 );
 
-// 4. 茶塩速攻型 (Tea Rush Build)
+// 4. 直行速攻型 (Tea Rush Build)
 const TeaRushBot = createBaseStrategy(
-  '茶塩速攻型',
-  { salt: 20, porter: 2, pack: 2, tea: 2.5, rice: 0.6, cloth: 0.6 },
+  '直行速攻型',
+  { salt: 20, tea: 1.5, rice: 1.0, cloth: 1.0 },
   {
     getTargetBonus(target, player, state) {
       const hasCargo = player.boxes.some(b => b.cargo);
       const hasSalt = player.boxes.some(b => b.salt > 0);
-      if (target === 4 && hasCargo) return 120;
-      if (target === 0 && hasSalt) return 130;
+      if (target === 4 && hasCargo) return 130;
+      if (target === 0 && hasSalt) return 140;
       return 0;
     }
   }
@@ -347,18 +349,16 @@ const TeaRushBot = createBaseStrategy(
 // 5. 状況適応型 (Adaptive Master)
 const AdaptiveBot = createBaseStrategy(
   '状況適応型',
-  { salt: 12, porter: 8, pack: 8, tea: 1.2, rice: 1.2, cloth: 1.2 },
+  { salt: 12, tea: 1.2, rice: 1.2, cloth: 1.2 },
   {
     getTargetBonus(target, player, state) {
-      const availablePorter = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
-      const availablePack = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
-
+      const availableCargo = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
       if (target === 2) {
-        if (player.handLimitLv === 1 && availablePorter >= 3) return 110;
-        if (player.boxesLv === 1 && availablePack >= 3) return 120;
+        if (player.handLimitLv === 1 && availableCargo >= 5) return 120;
+        if (player.boxesLv === 1 && availableCargo >= 5) return 130;
       }
-      if (target === 6 && player.guildLv === 1 && availablePorter >= 2 && availablePack >= 2) {
-        return 115;
+      if (target === 6 && player.guildLv === 1 && availableCargo >= 5) {
+        return 125;
       }
       return 0;
     }
@@ -370,7 +370,7 @@ const RandomBot = {
   name: 'ランダム型',
   desc: '合法手から完全ランダムに選択するベースライン検証AI',
   color: '#94a3b8',
-  weights: { salt: 1, porter: 1, pack: 1, tea: 1, rice: 1, cloth: 1 },
+  weights: { salt: 1, tea: 1, rice: 1, cloth: 1 },
   chooseMove(player, state) {
     if (!player.hand || player.hand.length === 0) return 0;
     return Math.floor(Math.random() * player.hand.length);
@@ -391,7 +391,6 @@ const RandomBot = {
     return shuffled.slice(0, emptySlots);
   }
 };
-
 
 // ----------------------------------------------------
 // 1ゲーム実行エンジン
@@ -424,8 +423,7 @@ function runSingleGame(botStrategies, winScore = 20) {
     turn: 0,
     step: 1,
     facilityUsed: false,
-    gameOver: false,
-    reshuffleCount: 0
+    gameOver: false
   };
 
   let totalRounds = 0;
@@ -436,14 +434,12 @@ function runSingleGame(botStrategies, winScore = 20) {
     const bot = curr.strategy;
     const botHandLimit = HAND_LIMITS[curr.handLimitLv - 1];
 
-    // ----------------------------
     // 1. 移動 (Step 1)
-    // ----------------------------
     if (curr.hand.length === 0) {
       const res = drawSafe(1, state.deck, state.discard);
       state.deck = res.newDeck;
       state.discard = res.newDiscard;
-      const topCard = res.drawn[0] || { num: 1, type: 'tea', salt: 1, porter: 0, pack: 0 };
+      const topCard = res.drawn[0] || { num: 1, type: 'tea', salt: 3 };
       const nextPos = (curr.pos + topCard.num) % 8;
       state.road[curr.pos].push(topCard);
       curr.pos = nextPos;
@@ -456,9 +452,7 @@ function runSingleGame(botStrategies, winScore = 20) {
       curr.pos = nextPos;
     }
 
-    // ----------------------------
     // 2. 補充 (Step 2)
-    // ----------------------------
     const wantRoad = bot.shouldReplenishRoad(curr, state);
     const roadCards = state.road[curr.pos] || [];
 
@@ -484,16 +478,14 @@ function runSingleGame(botStrategies, winScore = 20) {
       state.discard = res.newDiscard;
     }
 
-    // ----------------------------
     // 3. 行動 (Step 3: 施設 ＆ 荷積み)
-    // ----------------------------
     let bxs = curr.boxes;
     let sc = curr.score;
     let newDiscard = state.discard;
 
     // 施設効果
-    // 0: 地元
     if (curr.pos === 0) {
+      // 0: 地元
       bxs = bxs.map(b => {
         if (b.salt > 0) sc += b.salt;
         return { ...b, cargo: null, salt: 0 };
@@ -504,9 +496,8 @@ function runSingleGame(botStrategies, winScore = 20) {
         curr.boxes = bxs;
         break;
       }
-    }
-    // 4: 港
-    else if (curr.pos === 4) {
+    } else if (curr.pos === 4) {
+      // 4: 港
       const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
@@ -516,17 +507,16 @@ function runSingleGame(botStrategies, winScore = 20) {
         }
         return b;
       });
-    }
-    // 2: 箱屋
-    else if (curr.pos === 2) {
+    } else if (curr.pos === 2) {
+      // 2: 箱屋 (5塩/8塩)
+      const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
       if (curr.handLimitLv < 3) {
-        const cost = curr.handLimitLv === 1 ? 2 : 4;
-        const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
-        if (totalPorter >= cost) {
+        const cost = curr.handLimitLv === 1 ? 5 : 8;
+        if (availableCargo >= cost) {
           let rem = cost;
           bxs = bxs.map(b => {
             if (b.cargo && rem > 0) {
-              rem -= b.cargo.porter;
+              rem -= b.cargo.salt;
               if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
               return { ...b, cargo: null };
             }
@@ -536,14 +526,14 @@ function runSingleGame(botStrategies, winScore = 20) {
         }
       }
       if (curr.boxesLv < 3) {
-        const cost = curr.boxesLv === 1 ? 2 : 4;
-        const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
-        if (totalPack >= cost) {
+        const cost = curr.boxesLv === 1 ? 5 : 8;
+        const updatedCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
+        if (updatedCargo >= cost) {
           let rem = cost;
           bxs = bxs.map((b, idx) => {
             if (idx === curr.boxesLv) return { ...b, unlocked: true };
             if (b.cargo && rem > 0) {
-              rem -= b.cargo.pack;
+              rem -= b.cargo.salt;
               if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
               return { ...b, cargo: null };
             }
@@ -552,20 +542,15 @@ function runSingleGame(botStrategies, winScore = 20) {
           curr.boxesLv += 1;
         }
       }
-    }
-    // 6: 会所
-    else if (curr.pos === 6 && curr.guildLv < 3) {
-      const reqP = curr.guildLv === 1 ? 2 : 3;
-      const reqK = curr.guildLv === 1 ? 2 : 3;
-      const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
-      const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
-      if (totalPorter >= reqP && totalPack >= reqK) {
-        let remP = reqP;
-        let remK = reqK;
+    } else if (curr.pos === 6 && curr.guildLv < 3) {
+      // 6: 会所 (5塩/8塩)
+      const cost = curr.guildLv === 1 ? 5 : 8;
+      const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
+      if (availableCargo >= cost) {
+        let rem = cost;
         bxs = bxs.map(b => {
-          if (b.cargo && (remP > 0 || remK > 0)) {
-            remP -= b.cargo.porter;
-            remK -= b.cargo.pack;
+          if (b.cargo && rem > 0) {
+            rem -= b.cargo.salt;
             if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
             return { ...b, cargo: null };
           }
@@ -575,7 +560,7 @@ function runSingleGame(botStrategies, winScore = 20) {
       }
     }
 
-    // 荷箱にセットを積む（空き枠がある限り積む）
+    // 荷箱に積む
     while (true) {
       const sets = findSets(curr.hand);
       const emptyIdx = bxs.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
@@ -589,25 +574,30 @@ function runSingleGame(botStrategies, winScore = 20) {
       }
     }
 
-    curr.score = sc;
     curr.boxes = bxs;
+    curr.score = sc;
     state.discard = newDiscard;
 
-    // 次の手番へ
     state.turn = (state.turn + 1) % 4;
     if (state.turn === 0) totalRounds++;
   }
 
-  const winner = state.players.reduce((p, c) => c.score > p.score ? c : p, state.players[0]);
+  let winnerId = 0;
+  let maxScore = -1;
+  state.players.forEach((p, idx) => {
+    if (p.score > maxScore) {
+      maxScore = p.score;
+      winnerId = idx;
+    }
+  });
+
   return {
-    winnerId: winner.id,
-    winnerStrategy: winner.strategy.name,
+    winnerId,
+    winnerStrategy: state.players[winnerId].strategy.name,
     rounds: totalRounds,
-    scores: state.players.map(p => p.score),
     finalPlayers: state.players
   };
 }
-
 
 // ----------------------------------------------------
 // バッチシミュレーション実行＆レポート生成
@@ -620,7 +610,6 @@ function runSimulation(numGames = 1000, matchup = 'four_builds', winScore = 20) 
 
   let bots = [];
   if (matchup === 'four_builds' || matchup === 'tournament') {
-    // 4大戦略ビルドによる直接対決！
     bots = [HandLimitBot, CargoBoxesBot, GuildBonusBot, TeaRushBot];
   } else if (matchup === 'hand_vs_rush') {
     bots = [HandLimitBot, TeaRushBot, HandLimitBot, TeaRushBot];
@@ -666,7 +655,6 @@ function runSimulation(numGames = 1000, matchup = 'four_builds', winScore = 20) 
     stats.totalRounds += res.rounds;
     stats.roundsList.push(res.rounds);
 
-    // 勝者の施設レベルを記録
     const winnerP = res.finalPlayers[wId];
     stats.winnerHandLimitLevels[wId] += winnerP.handLimitLv;
     stats.winnerBoxesLevels[wId] += winnerP.boxesLv;
@@ -677,65 +665,76 @@ function runSimulation(numGames = 1000, matchup = 'four_builds', winScore = 20) 
       stats.handLimitLevels[idx] += p.handLimitLv;
       stats.boxesLevels[idx] += p.boxesLv;
       stats.guildLevels[idx] += p.guildLv;
-      stats.winsByStrategy[p.strategy.name].games++;
     });
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-
-  // 集計出力
-  stats.roundsList.sort((a, b) => a - b);
   const avgRounds = (stats.totalRounds / numGames).toFixed(1);
+  stats.roundsList.sort((a, b) => a - b);
   const medianRounds = stats.roundsList[Math.floor(numGames / 2)];
   const minRounds = stats.roundsList[0];
   const maxRounds = stats.roundsList[stats.roundsList.length - 1];
 
   const totalWins = stats.winsByPlayer.reduce((a, b) => a + b, 0);
-  const totalWinHandLv = (stats.winnerHandLimitLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
-  const totalWinBoxLv = (stats.winnerBoxesLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
-  const totalWinGuildLv = (stats.winnerGuildLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
+  const winHandLv = (stats.winnerHandLimitLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
+  const winBoxLv = (stats.winnerBoxesLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
+  const winGuildLv = (stats.winnerGuildLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
 
   console.log(`⏱️ 実行時間: ${elapsed} 秒 (${(numGames / elapsed).toFixed(0)} 試合/秒)`);
   console.log(`🎯 決着ラウンド数: 平均 ${avgRounds} 巡 (最速: ${minRounds} 巡 / 最遅: ${maxRounds} 巡 / 中央値: ${medianRounds} 巡)`);
-  console.log(`🏆 全勝者 平均施設強化: 🎴手札Lv.${totalWinHandLv} / 📦荷箱Lv.${totalWinBoxLv} / 🏛️会所Lv.${totalWinGuildLv}\n`);
+  console.log(`🏆 全勝者 平均施設強化: 🎴手札Lv.${winHandLv} / 📦荷箱Lv.${winBoxLv} / 🏛️会所Lv.${winGuildLv}\n`);
 
   console.log(`📊 【プレイヤー別成績（手番順 ＆ 🏆勝者時レベル到達度）】`);
   console.log(`-----------------------------------------------------------------------------------------`);
   console.log(`座順 | 戦略名    | 勝数 / 試合数   | 勝率   | 平均得点 | 🏆勝者手札Lv | 🏆勝者荷箱Lv | 🏆勝者会所Lv`);
   console.log(`-----------------------------------------------------------------------------------------`);
-  for (let i = 0; i < 4; i++) {
-    const wins = stats.winsByPlayer[i];
-    const winRate = ((wins / numGames) * 100).toFixed(1);
-    const avgScore = (stats.scoresByPlayer[i].reduce((a, b) => a + b, 0) / numGames).toFixed(1);
-
-    const winHandLv = wins > 0 ? (stats.winnerHandLimitLevels[i] / wins).toFixed(2) : '-   ';
-    const winBoxLv = wins > 0 ? (stats.winnerBoxesLevels[i] / wins).toFixed(2) : '-   ';
-    const winGuildLv = wins > 0 ? (stats.winnerGuildLevels[i] / wins).toFixed(2) : '-   ';
-    const botName = bots[i].name.padEnd(10);
-
-    console.log(` P${i + 1} | ${botName} | ${wins.toString().padStart(4)} / ${numGames} | ${winRate.padStart(5)}% | ${avgScore.padStart(6)}点 | Lv.${winHandLv}      | Lv.${winBoxLv}      | Lv.${winGuildLv}`);
-  }
+  bots.forEach((b, i) => {
+    const w = stats.winsByPlayer[i];
+    const rate = ((w / numGames) * 100).toFixed(1);
+    const avgScore = (stats.scoresByPlayer[i].reduce((sum, s) => sum + s, 0) / numGames).toFixed(1);
+    const pWinHandLv = w > 0 ? (stats.winnerHandLimitLevels[i] / w).toFixed(2) : '-';
+    const pWinBoxLv = w > 0 ? (stats.winnerBoxesLevels[i] / w).toFixed(2) : '-';
+    const pWinGuildLv = w > 0 ? (stats.winnerGuildLevels[i] / w).toFixed(2) : '-';
+    console.log(` P${i + 1} | ${b.name.padEnd(6, ' ')} | ${String(w).padStart(4, ' ')} / ${numGames} | ${rate.padStart(5, ' ')}% | ${avgScore.padStart(6, ' ')}点 | Lv.${pWinHandLv.padEnd(8, ' ')} | Lv.${pWinBoxLv.padEnd(8, ' ')} | Lv.${pWinGuildLv}`);
+  });
   console.log(`-----------------------------------------------------------------------------------------\n`);
 
   console.log(`🏆 【戦略別 勝率サマリー】`);
   Object.keys(stats.winsByStrategy).forEach(name => {
-    const s = stats.winsByStrategy[name];
-    const rate = ((s.wins / s.games) * 100).toFixed(1);
-    console.log(`  * ${name.padEnd(12)}: 勝率 ${rate}% (${s.wins}勝 / ${s.games}プレイヤー枠)`);
+    const w = stats.winsByStrategy[name].wins;
+    const count = bots.filter(b => b.name === name).length;
+    const totalSlotGames = numGames * count;
+    console.log(`  * ${name.padEnd(10, ' ')}: 勝率 ${((w / totalSlotGames) * 100).toFixed(1)}% (${w}勝 / ${totalSlotGames}プレイヤー枠)`);
   });
   console.log(`\n======================================================\n`);
 }
 
-// コマンドライン引数処理
-const args = process.argv.slice(2);
-let numGames = 1000;
-let matchup = 'four_builds';
-let targetScore = 20;
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  let numGames = 1000;
+  let matchup = 'four_builds';
+  let winScore = 20;
 
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--games' && args[i + 1]) numGames = parseInt(args[i + 1], 10);
-  if (args[i] === '--matchup' && args[i + 1]) matchup = args[i + 1];
-  if (args[i] === '--score' && args[i + 1]) targetScore = parseInt(args[i + 1], 10);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--games' && args[i + 1]) numGames = parseInt(args[i + 1], 10);
+    if (args[i] === '--matchup' && args[i + 1]) matchup = args[i + 1];
+    if (args[i] === '--winScore' && args[i + 1]) winScore = parseInt(args[i + 1], 10);
+  }
+
+  runSimulation(numGames, matchup, winScore);
 }
 
-runSimulation(numGames, matchup, targetScore);
+module.exports = {
+  createDeck,
+  drawSafe,
+  evalSet,
+  findSets,
+  evaluateHandValue,
+  getCardDiscardPriorities,
+  runSingleGame,
+  runSimulation,
+  HAND_LIMITS,
+  WIN_SCORE,
+  GOODS,
+  CARD_TEMPLATES
+};
