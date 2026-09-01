@@ -120,17 +120,41 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">初期手札枚数</label>
-          <input type="number" id="initialHand" class="form-input" value="5" min="1" max="10">
+          <label class="form-label">🎴 手札枚数（固定）</label>
+          <input type="number" id="handLimit" class="form-input" value="7" min="1" max="15" readonly style="background: #1e293b; color: #94a3b8; cursor: not-allowed;">
         </div>
 
         <div class="form-group">
-          <label class="form-label">手札上限 Lv1 / Lv2 / Lv3 (枚)</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
-            <input type="number" id="handLimitLv1" class="form-input" value="5" min="1" max="15">
-            <input type="number" id="handLimitLv2" class="form-input" value="7" min="1" max="15">
-            <input type="number" id="handLimitLv3" class="form-input" value="10" min="1" max="15">
+          <label class="form-label">📦 荷箱枠拡張 コスト Lv2 / Lv3 (塩)</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <input type="number" id="boxCostLv2" class="form-input" value="3" min="1" max="30" title="Lv2コスト">
+            <input type="number" id="boxCostLv3" class="form-input" value="5" min="1" max="30" title="Lv3コスト">
           </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">🏛️ 会所強化 コスト Lv2 / Lv3 (塩)</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <input type="number" id="guildCostLv2" class="form-input" value="4" min="1" max="30" title="Lv2コスト">
+            <input type="number" id="guildCostLv3" class="form-input" value="7" min="1" max="30" title="Lv3コスト">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">⚓ 港売却レート Lv2 / Lv3</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <input type="number" id="guildBonusLv2" class="form-input" value="2" min="0" max="30" title="Lv2ボーナス(+塩)">
+            <select id="guildLv3Mode" class="form-input" title="Lv3売却レート">
+              <option value="double" selected>🔥 売却値 2倍</option>
+              <option value="flat4">+4 塩 (旧仕様)</option>
+              <option value="flat6">+6 塩 (高フラット)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">🎲 刻子（同数3枚）ボーナス (+塩)</label>
+          <input type="number" id="tripletBonus" class="form-input" value="0" min="0" max="20">
         </div>
 
         <button id="btnRun" class="btn-run" style="margin-top: 14px;">

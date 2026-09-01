@@ -6,39 +6,39 @@ const GOODS = {
   cloth: { name: '布', icon: '🧵', chip: 'chip-cloth', card: 'card-cloth' },
 };
 
-// 3-1-1-1-3 (端牌=3塩, 中張牌=1塩)
+// 2-1-1-1-2 (端牌=2塩, 中張牌=1塩)
 const CARD_TEMPLATES = {
   tea: [
-    { num: 1, salt: 3 },
+    { num: 1, salt: 2 },
     { num: 2, salt: 1 },
     { num: 3, salt: 1 },
     { num: 4, salt: 1 },
-    { num: 5, salt: 3 },
+    { num: 5, salt: 2 },
   ],
   rice: [
-    { num: 1, salt: 3 },
+    { num: 1, salt: 2 },
     { num: 2, salt: 1 },
     { num: 3, salt: 1 },
     { num: 4, salt: 1 },
-    { num: 5, salt: 3 },
+    { num: 5, salt: 2 },
   ],
   cloth: [
-    { num: 1, salt: 3 },
+    { num: 1, salt: 2 },
     { num: 2, salt: 1 },
     { num: 3, salt: 1 },
     { num: 4, salt: 1 },
-    { num: 5, salt: 3 },
+    { num: 5, salt: 2 },
   ]
 };
 
 const TILES = [
   { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品', costText: '1塩＝1点' },
   { pos: 1, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張', costText: '手札5/8塩 荷箱5/8塩' },
+  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張', costText: '荷箱 3塩 / 5塩' },
   { pos: 3, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 4, name: '港', icon: '⚓', isFacility: true, short: '売却', costText: '塩＋会所(+0/+3/+6)' },
+  { pos: 4, name: '港', icon: '⚓', isFacility: true, short: '換金', costText: '売却(Lv2:+2/Lv3:×2)' },
   { pos: 5, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '5塩 / 8塩' },
+  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '4塩 / 7塩' },
   { pos: 7, name: '街道', icon: '🛣️', isFacility: false },
 ];
 
@@ -49,8 +49,22 @@ const PLAYERS_DEF = [
   { name: 'BOT3', color: '#6b46c1', isHuman: false }
 ];
 
-const HAND_LIMITS = [5, 7, 10];
+const HAND_LIMIT = 7;
 const WIN_SCORE = 20;
+const BOX_COSTS = [3, 5];
+const GUILD_COSTS = [4, 7];
+
+function calcPortSale(cargoSalt, guildLv) {
+  if (guildLv === 1) return cargoSalt;
+  if (guildLv === 2) return cargoSalt + 2;
+  return cargoSalt * 2; // Lv3: 2倍！
+}
+
+function getGuildRateLabel(guildLv) {
+  if (guildLv === 1) return '通常';
+  if (guildLv === 2) return '港+2塩';
+  return '🔥港2倍!';
+}
 
 function createDeck() {
   const deck = [];
@@ -84,7 +98,7 @@ function drawSafe(count, currentDeck, currentDiscard) {
   return { drawn, newDeck: d, newDiscard: disc };
 }
 
-// 刻子ボーナス +3点
+// 単純合計（ボーナスなし）
 function evalSet(cards) {
   if (!cards || cards.length !== 3) return null;
   const t = cards[0].type;
@@ -93,18 +107,18 @@ function evalSet(cards) {
   const nums = cards.map(c => c.num).sort((a, b) => a - b);
   const baseSalt = cards.reduce((s, c) => s + c.salt, 0);
 
-  // 同数3枚（刻子）: 基本塩 + 3塩ボーナス！
+  // 同数3枚（刻子）
   if (nums[0] === nums[1] && nums[1] === nums[2]) {
     return {
       name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}×3 (刻子)`,
-      shortName: `${GOODS[t].icon}${nums[0]}×3 (刻子)`,
-      salt: baseSalt + 3,
+      shortName: `${GOODS[t].icon}${nums[0]}×3`,
+      salt: baseSalt,
       isTriplet: true,
       cards,
       type: t
     };
   }
-  // 連続3枚（順子）: 基本塩そのまま
+  // 連続3枚（順子）
   if (nums[0] + 1 === nums[1] && nums[1] + 1 === nums[2]) {
     return {
       name: `${GOODS[t].icon}${GOODS[t].name} ${nums[0]}-${nums[2]} (順子)`,
@@ -168,9 +182,9 @@ function evaluateHandValue(hand) {
       for (let j = i + 1; j < list.length; j++) {
         const diff = Math.abs(list[i].num - list[j].num);
         if (diff === 0) {
-          value += 30; // 対子（刻子への期待値）
+          value += 25; // 対子
         } else if (diff === 1) {
-          value += (list[i].num === 1 || list[j].num === 5) ? 25 : 20; // 連続
+          value += (list[i].num === 1 || list[j].num === 5) ? 20 : 25; // 連続
         } else if (diff === 2) {
           value += 15; // 嵌張
         }
@@ -180,7 +194,7 @@ function evaluateHandValue(hand) {
   return value;
 }
 
-// 不要牌の優先度算出（手札の価値を落とさない順）
+// 不要牌の優先度算出
 function getCardDiscardPriorities(hand) {
   if (!hand || hand.length === 0) return [];
   const baseValue = evaluateHandValue(hand);
@@ -199,13 +213,12 @@ function initGame() {
     name: def.name,
     color: def.color,
     pos: 0,
-    hand: d.splice(0, 5),
+    hand: d.splice(0, HAND_LIMIT),
     boxes: [
       { unlocked: true, cargo: null, salt: 0 },
       { unlocked: false, cargo: null, salt: 0 },
       { unlocked: false, cargo: null, salt: 0 }
     ],
-    handLimitLv: 1,
     boxesLv: 1,
     guildLv: 1,
     score: 0
@@ -233,31 +246,13 @@ function App() {
   const p = state.players[state.turn];
   const isHuman = (state.turn === 0);
   const me = state.players[0];
-  const myHandLimit = HAND_LIMITS[me.handLimitLv - 1];
 
   const mySets = useMemo(() => findSets(me.hand), [me.hand]);
-  const availableCargoSalt = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0), [me.boxes]);
-
-  // 選択された荷箱のリソース
-  const selectedBoxes = useMemo(() => {
-    return me.boxes.filter((b, idx) => selectedBoxIndices.includes(idx) && b.cargo);
-  }, [me.boxes, selectedBoxIndices]);
-
-  const selectedCargoSalt = useMemo(() => {
-    return selectedBoxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
-  }, [selectedBoxes]);
-
-  // 荷箱選択トグル
-  const toggleBoxSelection = (boxIdx) => {
-    if (!isHuman || state.step !== 3) return;
-    const box = me.boxes[boxIdx];
-    if (!box || !box.cargo) return;
-    if (selectedBoxIndices.includes(boxIdx)) {
-      setSelectedBoxIndices(selectedBoxIndices.filter(i => i !== boxIdx));
-    } else {
-      setSelectedBoxIndices([...selectedBoxIndices, boxIdx]);
-    }
-  };
+  
+  // 換金済み塩の総保有量
+  const availableSalt = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.salt || 0), 0), [me.boxes]);
+  // 荷物（未換金セット）の数
+  const cargoCount = useMemo(() => me.boxes.filter(b => b.cargo).length, [me.boxes]);
 
   // 手札で選択されたカードとセット判定
   const selectedCards = useMemo(() => {
@@ -318,12 +313,11 @@ function App() {
     setState(prev => ({ ...prev, players: newPlayers }));
   };
 
-  // 港での個別売却
+  // 港での個別売却・換金
   const handlePortSellBox = (boxIdx) => {
     const box = me.boxes[boxIdx];
     if (!isHuman || state.step !== 3 || p.pos !== 4 || !box || !box.cargo) return;
-    const bonus = me.guildLv === 1 ? 0 : me.guildLv === 2 ? 3 : 6;
-    const gain = box.cargo.salt + bonus;
+    const gain = calcPortSale(box.cargo.salt, me.guildLv);
     const returnedCards = box.cargo.cards || [];
 
     const newBoxes = me.boxes.map((b, idx) => idx === boxIdx ? { ...b, cargo: null, salt: (b.salt || 0) + gain } : b);
@@ -335,12 +329,12 @@ function App() {
     }));
   };
 
-  // 施設アクション
+  // 施設アクション（塩を支払って強化・得点化）
   const handleFacility = (type) => {
     if (!isHuman || state.step !== 3) return;
     const pos = p.pos;
 
-    // 0: 地元
+    // 0: 地元（得点化）
     if (pos === 0) {
       let gain = 0;
       const newBoxes = me.boxes.map(b => {
@@ -356,78 +350,45 @@ function App() {
         players: prev.players.map((pl, i) => i === 0 ? { ...pl, score: newScore, boxes: newBoxes } : pl)
       }));
     }
-    // 2: 箱屋 (拡張: 手札5/8塩, 荷箱5/8塩)
-    else if (pos === 2) {
-      const useSelected = selectedBoxIndices.length > 0;
-      const saltToUse = useSelected ? selectedCargoSalt : availableCargoSalt;
-
-      if (type === 'handLimit' && me.handLimitLv < 3) {
-        const cost = me.handLimitLv === 1 ? 5 : 8;
-        if (saltToUse < cost) return;
-
-        let rem = cost;
-        const returnedCards = [];
-        const newBoxes = me.boxes.map((b, idx) => {
-          if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
-            rem -= b.cargo.salt;
-            if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
-            return { ...b, cargo: null };
-          }
-          return b;
-        });
-
-        setSelectedBoxIndices([]);
-        setState(prev => ({
-          ...prev,
-          discard: [...prev.discard, ...returnedCards],
-          players: prev.players.map((pl, i) => i === 0 ? { ...pl, handLimitLv: pl.handLimitLv + 1, boxes: newBoxes } : pl)
-        }));
-      } else if (type === 'boxes' && me.boxesLv < 3) {
-        const cost = me.boxesLv === 1 ? 5 : 8;
-        if (saltToUse < cost) return;
-
-        let rem = cost;
-        const returnedCards = [];
-        const newBoxes = me.boxes.map((b, idx) => {
-          if (idx === me.boxesLv) return { ...b, unlocked: true };
-          if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
-            rem -= b.cargo.salt;
-            if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
-            return { ...b, cargo: null };
-          }
-          return b;
-        });
-
-        setSelectedBoxIndices([]);
-        setState(prev => ({
-          ...prev,
-          discard: [...prev.discard, ...returnedCards],
-          players: prev.players.map((pl, i) => i === 0 ? { ...pl, boxesLv: pl.boxesLv + 1, boxes: newBoxes } : pl)
-        }));
-      }
-    }
-    // 6: 会所 (強化: 5塩/8塩)
-    else if (pos === 6 && type === 'guild' && me.guildLv < 3) {
-      const cost = me.guildLv === 1 ? 5 : 8;
-      const useSelected = selectedBoxIndices.length > 0;
-      const saltToUse = useSelected ? selectedCargoSalt : availableCargoSalt;
-      if (saltToUse < cost) return;
+    // 2: 箱屋 (荷箱枠拡張: 港で換金した塩 3/5 を支払う)
+    else if (pos === 2 && type === 'boxes' && me.boxesLv < 3) {
+      const cost = BOX_COSTS[me.boxesLv - 1];
+      if (availableSalt < cost) return;
 
       let rem = cost;
-      const returnedCards = [];
       const newBoxes = me.boxes.map((b, idx) => {
-        if ((!useSelected || selectedBoxIndices.includes(idx)) && b.cargo && rem > 0) {
-          rem -= b.cargo.salt;
-          if (b.cargo.cards) returnedCards.push(...b.cargo.cards);
-          return { ...b, cargo: null };
+        let updated = { ...b };
+        if (idx === me.boxesLv) updated.unlocked = true;
+        if (updated.salt > 0 && rem > 0) {
+          const spend = Math.min(updated.salt, rem);
+          rem -= spend;
+          updated.salt -= spend;
+        }
+        return updated;
+      });
+
+      setState(prev => ({
+        ...prev,
+        players: prev.players.map((pl, i) => i === 0 ? { ...pl, boxesLv: pl.boxesLv + 1, boxes: newBoxes } : pl)
+      }));
+    }
+    // 6: 会所 (強化: 港で換金した塩 4/7 を支払う)
+    else if (pos === 6 && type === 'guild' && me.guildLv < 3) {
+      const cost = GUILD_COSTS[me.guildLv - 1];
+      if (availableSalt < cost) return;
+
+      let rem = cost;
+      const newBoxes = me.boxes.map(b => {
+        if (b.salt > 0 && rem > 0) {
+          const spend = Math.min(b.salt, rem);
+          rem -= spend;
+          return { ...b, salt: b.salt - spend };
         }
         return b;
       });
 
-      setSelectedBoxIndices([]);
       setState(prev => ({
         ...prev,
-        discard: [...prev.discard, ...returnedCards],
         players: prev.players.map((pl, i) => i === 0 ? { ...pl, guildLv: pl.guildLv + 1, boxes: newBoxes } : pl)
       }));
     }
@@ -436,7 +397,7 @@ function App() {
   // Step 2: 補充 -> Step 3（行動）へ
   const handleReplenishDeck = () => {
     if (!isHuman || state.step !== 2) return;
-    const needed = Math.max(0, myHandLimit - me.hand.length);
+    const needed = Math.max(0, HAND_LIMIT - me.hand.length);
     const res = drawSafe(needed, state.deck, state.discard);
 
     const newPlayers = state.players.map((pl, i) => i === 0 ? {
@@ -459,14 +420,13 @@ function App() {
     if (!isHuman || state.step !== 2) return;
     const roadCards = state.road[p.pos] || [];
     if (roadCards.length === 0) return;
-    const combinedHand = [...me.hand, ...roadCards];
+
+    const combined = [...me.hand, ...roadCards];
     const newRoad = state.road.map((arr, i) => i === p.pos ? [] : arr);
 
-    setSelectedHandIds([]);
-    setSelectedBoxIndices([]);
-    if (combinedHand.length > myHandLimit) {
-      const excess = combinedHand.length - myHandLimit;
-      const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: combinedHand } : pl);
+    if (combined.length > HAND_LIMIT) {
+      const excess = combined.length - HAND_LIMIT;
+      const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: combined } : pl);
       setOverflowSelectedIds([]);
       setState(prev => ({
         ...prev,
@@ -476,7 +436,7 @@ function App() {
         excessCount: excess
       }));
     } else {
-      const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: combinedHand } : pl);
+      const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: combined } : pl);
       setState(prev => ({
         ...prev,
         road: newRoad,
@@ -486,18 +446,18 @@ function App() {
     }
   };
 
-  // Step 4: 返却確定 -> Step 3（行動）へ
+  // Step 4: 超過カードを現在地に戻す
   const handleConfirmExcess = () => {
-    if (!isHuman || state.step !== 4 || overflowSelectedIds.length !== state.excessCount) return;
-    const returned = me.hand.filter(c => overflowSelectedIds.includes(c.id));
-    const finalHand = me.hand.filter(c => !overflowSelectedIds.includes(c.id));
-    const newRoad = state.road.map((arr, i) => i === p.pos ? [...arr, ...returned] : arr);
+    if (!isHuman || state.step !== 4) return;
+    if (overflowSelectedIds.length !== state.excessCount) return;
 
-    const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: finalHand } : pl);
+    const returningCards = me.hand.filter(c => overflowSelectedIds.includes(c.id));
+    const remainingHand = me.hand.filter(c => !overflowSelectedIds.includes(c.id));
+
+    const newRoad = state.road.map((arr, i) => i === p.pos ? [...arr, ...returningCards] : arr);
+    const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: remainingHand } : pl);
+
     setOverflowSelectedIds([]);
-    setSelectedHandIds([]);
-    setSelectedBoxIndices([]);
-
     setState(prev => ({
       ...prev,
       road: newRoad,
@@ -526,7 +486,6 @@ function App() {
 
     const timer = setTimeout(() => {
       const curr = state.players[state.turn];
-      const botHandLimit = HAND_LIMITS[curr.handLimitLv - 1];
 
       if (state.step === 1) {
         const hList = curr.hand;
@@ -536,7 +495,6 @@ function App() {
         const totalSalt = curr.boxes.reduce((s, b) => s + (b.salt || 0), 0);
         const hasSalt = totalSalt > 0;
         const hasCargo = curr.boxes.some(b => b.cargo);
-        const availableCargo = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt : 0), 0);
 
         let bestScore = -99999;
         let bestIdx = 0;
@@ -558,22 +516,17 @@ function App() {
             }
           } else if (target === 4) {
             if (hasCargo) {
-              const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
-              const expectedSalt = curr.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt + bonus : 0), 0);
-              score += 140 + expectedSalt * 15;
+              const expectedSalt = curr.boxes.reduce((s, b) => s + (b.cargo ? calcPortSale(b.cargo.salt, curr.guildLv) : 0), 0);
+              score += 160 + expectedSalt * 15;
             } else {
               score -= 25;
             }
-          } else if (target === 2) {
-            if (curr.handLimitLv === 1 && availableCargo >= 5) score += 140;
-            else if (curr.handLimitLv === 2 && availableCargo >= 8) score += 80;
-            if (curr.boxesLv === 1 && availableCargo >= 5) score += 150;
-            else if (curr.boxesLv === 2 && availableCargo >= 8) score += 90;
-          } else if (target === 6) {
-            const cost = curr.guildLv === 1 ? 5 : 8;
-            if (curr.guildLv < 3 && availableCargo >= cost) {
-              score += (curr.guildLv === 1 ? 140 : 90);
-            }
+          } else if (target === 2 && curr.boxesLv < 3) {
+            const cost = BOX_COSTS[curr.boxesLv - 1];
+            if (totalSalt >= cost) score += 190;
+          } else if (target === 6 && curr.guildLv < 3) {
+            const cost = GUILD_COSTS[curr.guildLv - 1];
+            if (totalSalt >= cost) score += (curr.guildLv === 1 ? 190 : 210);
           }
 
           const roadStack = state.road[target] || [];
@@ -598,7 +551,7 @@ function App() {
           }
         });
 
-        const c = hList[bestIdx];
+        const c = hList[bestIdx] || hList[0];
         const nextPos = (curr.pos + c.num) % 8;
         const newRoad = state.road.map((arr, i) => i === curr.pos ? [...arr, c] : arr);
         const newPlayers = state.players.map((pl, i) => i === state.turn ? {
@@ -627,14 +580,14 @@ function App() {
         if (roadStack.length > 0) {
           const setsBefore = findSets(hnd).length;
           const setsAfter = findSets([...hnd, ...roadStack]).length;
-          if (setsAfter > setsBefore || roadStack.length >= 2 || hnd.length < 3) shouldTakeRoad = true;
+          if (setsAfter > setsBefore || roadStack.length >= 2 || hnd.length < 4) shouldTakeRoad = true;
         }
 
         if (shouldTakeRoad) {
           const combined = [...hnd, ...roadStack];
           newRoad = state.road.map((arr, i) => i === curr.pos ? [] : arr);
-          if (combined.length > botHandLimit) {
-            const excess = combined.length - botHandLimit;
+          if (combined.length > HAND_LIMIT) {
+            const excess = combined.length - HAND_LIMIT;
             const priorities = getCardDiscardPriorities(combined);
             const returnIds = priorities.slice(0, excess).map(p => p.card.id);
             const toReturn = combined.filter(c => returnIds.includes(c.id));
@@ -644,7 +597,7 @@ function App() {
             hnd = combined;
           }
         } else {
-          const needed = Math.max(0, botHandLimit - hnd.length);
+          const needed = Math.max(0, HAND_LIMIT - hnd.length);
           const res = drawSafe(needed, newDeck, newDiscard);
           hnd = [...hnd, ...res.drawn];
           newDeck = res.newDeck;
@@ -653,64 +606,50 @@ function App() {
 
         // 施設アクション
         if (curr.pos === 0) {
+          // 地元: 塩の得点化
           bxs = bxs.map(b => {
             if (b.salt > 0) sc += b.salt;
             return { ...b, cargo: null, salt: 0 };
           });
         } else if (curr.pos === 4) {
-          const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
+          // 港: セット売却・換金 (Lv2:+2, Lv3:×2)
           bxs = bxs.map(b => {
             if (b.unlocked && b.cargo) {
-              const gain = b.cargo.salt + bonus;
+              const gain = calcPortSale(b.cargo.salt, curr.guildLv);
               if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
               return { ...b, cargo: null, salt: (b.salt || 0) + gain };
             }
             return b;
           });
-        } else if (curr.pos === 2) {
-          const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
-          if (curr.handLimitLv < 3) {
-            const cost = curr.handLimitLv === 1 ? 5 : 8;
-            if (availableCargo >= cost) {
-              let rem = cost;
-              bxs = bxs.map(b => {
-                if (b.cargo && rem > 0) {
-                  rem -= b.cargo.salt;
-                  if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
-                  return { ...b, cargo: null };
-                }
-                return b;
-              });
-              curr.handLimitLv += 1;
-            }
-          }
-          if (curr.boxesLv < 3) {
-            const cost = curr.boxesLv === 1 ? 5 : 8;
-            const updatedCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
-            if (updatedCargo >= cost) {
-              let rem = cost;
-              bxs = bxs.map((b, idx) => {
-                if (idx === curr.boxesLv) return { ...b, unlocked: true };
-                if (b.cargo && rem > 0) {
-                  rem -= b.cargo.salt;
-                  if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
-                  return { ...b, cargo: null };
-                }
-                return b;
-              });
-              curr.boxesLv += 1;
-            }
+        } else if (curr.pos === 2 && curr.boxesLv < 3) {
+          // 箱屋: 換金済み塩を支払って荷箱拡張 (3/5塩)
+          const cost = BOX_COSTS[curr.boxesLv - 1];
+          let totalSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0);
+          if (totalSalt >= cost) {
+            let rem = cost;
+            bxs = bxs.map((b, idx) => {
+              let updated = { ...b };
+              if (idx === curr.boxesLv) updated.unlocked = true;
+              if (updated.salt > 0 && rem > 0) {
+                const spend = Math.min(updated.salt, rem);
+                rem -= spend;
+                updated.salt -= spend;
+              }
+              return updated;
+            });
+            curr.boxesLv += 1;
           }
         } else if (curr.pos === 6 && curr.guildLv < 3) {
-          const cost = curr.guildLv === 1 ? 5 : 8;
-          const availableCargo = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.salt : 0), 0);
-          if (availableCargo >= cost) {
+          // 会所: 換金済み塩 4/7 を支払って強化
+          const cost = GUILD_COSTS[curr.guildLv - 1];
+          const totalSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0);
+          if (totalSalt >= cost) {
             let rem = cost;
             bxs = bxs.map(b => {
-              if (b.cargo && rem > 0) {
-                rem -= b.cargo.salt;
-                if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
-                return { ...b, cargo: null };
+              if (b.salt > 0 && rem > 0) {
+                const spend = Math.min(b.salt, rem);
+                rem -= spend;
+                return { ...b, salt: b.salt - spend };
               }
               return b;
             });
@@ -732,24 +671,26 @@ function App() {
           }
         }
 
-        const nextTurn = (state.turn + 1) % 4;
+        const isWin = sc >= WIN_SCORE;
         const newPlayers = state.players.map((pl, i) => i === state.turn ? {
           ...pl,
+          score: sc,
           hand: hnd,
           boxes: bxs,
-          score: sc
+          boxesLv: curr.boxesLv,
+          guildLv: curr.guildLv
         } : pl);
 
         setState(prev => ({
           ...prev,
-          road: newRoad,
           deck: newDeck,
           discard: newDiscard,
+          road: newRoad,
           players: newPlayers,
-          gameOver: sc >= WIN_SCORE,
-          turn: nextTurn,
+          turn: isWin ? prev.turn : (prev.turn + 1) % 4,
           step: 1,
-          facilityUsed: false
+          facilityUsed: false,
+          gameOver: isWin
         }));
       }
     }, 450);
@@ -757,112 +698,94 @@ function App() {
     return () => clearTimeout(timer);
   }, [state.turn, state.step, state.gameOver]);
 
-  // カード描画
-  const renderCard = (c, onClick, isSelected = false) => {
-    const meta = GOODS[c.type];
+  // レンダリング補助関数
+  const renderCard = (card, onClick, isSelected = false, isOverflow = false) => {
+    const g = GOODS[card.type];
     return h('div', {
-      key: c.id,
-      onClick: onClick,
-      className: `card ${meta.card} ${isSelected ? 'selected' : ''}`
+      key: card.id,
+      onClick,
+      className: `card ${g.card} ${isSelected ? 'selected' : ''} ${isOverflow ? 'overflow-selected' : ''}`
     }, [
-      h('div', { className: 'card-header' }, [
-        h('span', { className: 'card-num' }, c.num),
-        h('span', { className: 'card-icon-main' }, meta.icon)
-      ]),
-      h('div', { className: 'card-res-container' }, [
-        h('span', { className: 'res-pill res-salt' }, `🧂${c.salt}`)
+      h('div', { className: 'card-num' }, card.num),
+      h('div', { className: 'card-icon' }, g.icon),
+      h('div', { className: 'card-badges-pill' }, [
+        h('span', { className: 'badge-pill' }, `🧂${card.salt}`)
       ])
     ]);
   };
 
-  // タイル上のカードチップ
-  const renderChip = (c, idx) => {
-    const meta = GOODS[c.type];
-    return h('span', {
-      key: c.id || idx,
-      className: `chip ${meta.chip}`
-    }, `${meta.icon}${c.num}`);
-  };
-
-  // タイル描画
-  const renderTile = (t) => {
-    const playersHere = state.players.filter(pl => pl.pos === t.pos);
-    const roadCards = state.road[t.pos] || [];
-    const isCurrent = p.pos === t.pos;
+  const renderTile = (tile) => {
+    const occupants = state.players.filter(pl => pl.pos === tile.pos);
+    const cardsOnTile = state.road[tile.pos] || [];
+    const isCurrentPos = (p.pos === tile.pos);
 
     return h('div', {
-      key: t.pos,
-      className: `tile ${t.isFacility ? 'facility' : ''} ${isCurrent ? 'current' : ''}`
+      key: tile.pos,
+      className: `tile ${tile.isFacility ? 'facility-tile' : ''} ${isCurrentPos ? 'current-tile' : ''}`
     }, [
-      h('div', { className: 'tile-title' }, [
-        h('span', null, `${t.icon} ${t.name}`),
-        t.isFacility ? (
-          h('span', { className: 'tile-badge' }, t.short)
-        ) : (
-          roadCards.length > 0 && h('span', { style: { fontSize: '10px', color: '#e67700', fontWeight: 'bold' } }, `🃏${roadCards.length}`)
-        )
+      h('div', { className: 'tile-header' }, [
+        h('span', { className: 'tile-num' }, tile.pos),
+        h('span', { className: 'tile-name' }, `${tile.icon} ${tile.name}`)
       ]),
-
-      t.isFacility && t.costText && h('div', { className: 'tile-cost-tag' }, t.costText),
-
-      h('div', { className: 'tile-players' },
-        playersHere.map(pl => h('div', {
+      tile.costText && h('div', { className: 'tile-cost-tag' }, tile.costText),
+      h('div', { className: 'tile-occupants' },
+        occupants.map(pl => h('span', {
           key: pl.id,
-          className: 'player-dot',
+          className: 'occupant-badge',
           style: { backgroundColor: pl.color }
         }, pl.id === 0 ? '自' : `B${pl.id}`))
       ),
-
       h('div', { className: 'tile-cards' },
-        roadCards.length === 0 ? (
-          h('span', { className: 'tile-empty' }, '-')
-        ) : (
-          roadCards.map((c, i) => renderChip(c, i))
-        )
+        cardsOnTile.length === 0
+          ? h('span', { className: 'tile-empty' }, 'なし')
+          : cardsOnTile.map(c => h('span', {
+              key: c.id,
+              className: `tile-card-chip chip-${c.type}`
+            }, `${GOODS[c.type].name}${c.num}`))
       )
     ]);
   };
 
-  // マップ中央操作ハブ
+  // 中央エリア（操作ハブ）
   const renderCenter = () => {
     if (!isHuman) {
-      return h('div', { className: 'center-hub' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#4a5568' } }, `🤖 ${p.name} 思考中...`),
-        h('div', { style: { fontSize: '11px', color: '#718096' } }, `${TILES[p.pos].icon} ${TILES[p.pos].name}`)
+      return h('div', { className: 'center-hub bot-turn' }, [
+        h('div', { className: 'spinner' }),
+        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: p.color } }, `${p.name} 思考中...`),
+        h('div', { style: { fontSize: '10px', color: '#718096' } }, `${TILES[p.pos].name} に滞在中`)
       ]);
     }
 
     // Step 1: 移動
     if (state.step === 1) {
       return h('div', { className: 'center-hub step-1' }, [
-        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: '#9b2c2c' } }, '🎯【1. 移動】'),
-        h('div', { style: { fontSize: '11px', color: '#4a5568' } }, '手札を選んで進む')
+        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#c53030' } }, '🚶【1. 移動】'),
+        h('div', { style: { fontSize: '10px', color: '#4a5568' } }, '下の手札から1枚選んで進む')
       ]);
     }
 
     // Step 2: 補充
     if (state.step === 2) {
       const roadCards = state.road[p.pos] || [];
-      const hasRoadCards = roadCards.length > 0;
       return h('div', { className: 'center-hub step-2' }, [
-        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: '#1971c2', marginBottom: '4px' } }, '🎴【2. 手札補充】'),
-        h('div', { style: { display: 'flex', gap: '6px', width: '100%' } }, [
+        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#1971c2' } }, '📥【2. 補充】'),
+        h('div', { style: { display: 'flex', gap: '4px', width: '100%', marginTop: '2px' } }, [
           h('button', {
             onClick: handleReplenishDeck,
             className: 'btn btn-primary',
-            style: { flex: 1, fontSize: '10px', padding: '6px 4px' }
-          }, `山札引く (${state.deck.length}枚)`),
+            style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
+          }, `🎴 山札 (${HAND_LIMIT}枚まで)`),
           h('button', {
+            disabled: roadCards.length === 0,
             onClick: handleReplenishRoad,
-            disabled: !hasRoadCards,
-            className: 'btn btn-warning',
-            style: { flex: 1, fontSize: '10px', padding: '6px 4px' }
-          }, `マス回収 (${roadCards.length}枚)`)
+            className: 'btn btn-purple',
+            style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
+          }, `🛣️ マス回収 (${roadCards.length}枚)`)
         ])
       ]);
     }
 
-    // Step 4: 超過返却
+    // Step 4: 返却
     if (state.step === 4) {
       const needed = state.excessCount;
       const current = overflowSelectedIds.length;
@@ -880,7 +803,6 @@ function App() {
 
     // Step 3: 行動（荷箱積み＆施設利用）
     if (state.step === 3) {
-      const saltToUse = selectedBoxIndices.length > 0 ? selectedCargoSalt : availableCargoSalt;
       return h('div', { className: 'center-hub step-3' }, [
         h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', display: 'flex', justifyContent: 'space-between', width: '100%' } }, [
           h('span', null, '⚡【3. 行動】'),
@@ -889,78 +811,63 @@ function App() {
 
         // 施設利用ボタン群
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
+          // 地元(0)
           p.pos === 0 && (
-            me.boxes.some(b => b.salt > 0) ? (
+            availableSalt > 0 ? (
               h('button', {
                 onClick: () => handleFacility('deliver'),
                 className: 'btn btn-success',
                 style: { width: '100%', fontSize: '11px', padding: '5px 4px', fontWeight: 'bold' }
-              }, `🏡 🧂得点化 (+${me.boxes.reduce((s,b)=>s+b.salt,0)} 🏆)`)
-            ) : null
+              }, `🏡 🧂得点化 (+${availableSalt} 🏆)`)
+            ) : h('div', { style: { fontSize: '10px', color: '#718096', textAlign: 'center' } }, '換金した塩がありません（港で売却して運ぼう）')
           ),
 
+          // 箱屋(2): 港で換金した塩 3/5 を支払って荷箱拡張
           p.pos === 2 && (
-            h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
-              selectedBoxIndices.length > 0 && h('div', { style: { fontSize: '10px', color: '#b26b00', fontWeight: 'bold', textAlign: 'center' } },
-                `📦 箱選択中: 🧂${selectedCargoSalt}`
-              ),
-              h('div', { style: { display: 'flex', gap: '3px', width: '100%' } }, [
-                me.handLimitLv < 3 && h('button', {
-                  disabled: saltToUse < (me.handLimitLv === 1 ? 5 : 8),
-                  onClick: () => handleFacility('handLimit'),
-                  className: 'btn btn-warning',
-                  style: { flex: 1, fontSize: '9px', padding: '4px 2px' }
-                }, selectedBoxIndices.length > 0
-                  ? `選択箱で🎴上限+1(🧂${me.handLimitLv === 1 ? 5 : 8})`
-                  : `🎴上限+1(🧂${me.handLimitLv === 1 ? 5 : 8})`
+            me.boxesLv < 3 ? (
+              h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
+                h('div', { style: { fontSize: '10px', color: availableSalt > 0 ? '#b26b00' : '#718096', fontWeight: 'bold', textAlign: 'center' } },
+                  availableSalt > 0 ? `🧂 所持塩: ${availableSalt}` : `⚠️ 港で換金した塩が必要 (所持: 0)`
                 ),
-                me.boxesLv < 3 && h('button', {
-                  disabled: saltToUse < (me.boxesLv === 1 ? 5 : 8),
+                h('button', {
+                  disabled: availableSalt < BOX_COSTS[me.boxesLv - 1],
                   onClick: () => handleFacility('boxes'),
                   className: 'btn btn-purple',
-                  style: { flex: 1, fontSize: '9px', padding: '4px 2px' }
-                }, selectedBoxIndices.length > 0
-                  ? `選択箱で📦枠+1(🧂${me.boxesLv === 1 ? 5 : 8})`
-                  : `📦枠+1(🧂${me.boxesLv === 1 ? 5 : 8})`
-                )
+                  style: { width: '100%', fontSize: '10px', padding: '5px 4px' }
+                }, `📦 荷箱${me.boxesLv + 1}枠目を解放 (🧂${BOX_COSTS[me.boxesLv - 1]}塩)`)
               ])
-            ])
+            ) : h('div', { style: { fontSize: '10px', color: '#7c3aed', textAlign: 'center' } }, '📦 荷箱枠最大 (3枠)')
           ),
 
-          p.pos === 4 && me.boxes.some(b => b.cargo) && (
-            h('div', { style: { display: 'flex', gap: '3px', flexDirection: 'column', width: '100%' } }, [
-              selectedBoxIndices.length > 0 && h('button', {
-                onClick: () => {
-                  selectedBoxIndices.forEach(idx => handlePortSellBox(idx));
-                  setSelectedBoxIndices([]);
-                },
-                className: 'btn btn-primary',
-                style: { width: '100%', fontSize: '10px', padding: '4px 6px', fontWeight: 'bold' }
-              }, `⚓ 選択した${selectedBoxIndices.length}個の箱を一括売却`),
-              me.boxes.map((b, idx) => b.cargo ? h('button', {
-                key: idx,
-                onClick: () => handlePortSellBox(idx),
-                className: 'btn btn-primary',
-                style: { width: '100%', fontSize: '9px', padding: '3px 4px' }
-              }, `⚓ 箱${idx+1} (${b.cargo.shortName || b.cargo.name}) 売却`) : null)
-            ])
+          // 港(4): セット売却・換金
+          p.pos === 4 && (
+            cargoCount > 0 ? (
+              h('div', { style: { display: 'flex', gap: '3px', flexDirection: 'column', width: '100%' } }, [
+                me.boxes.map((b, idx) => b.cargo ? h('button', {
+                  key: idx,
+                  onClick: () => handlePortSellBox(idx),
+                  className: 'btn btn-primary',
+                  style: { width: '100%', fontSize: '9px', padding: '3px 4px' }
+                }, `⚓ 箱${idx+1} (${b.cargo.shortName || b.cargo.name}) 売却 ➔ 🧂${calcPortSale(b.cargo.salt, me.guildLv)}塩`) : null)
+              ])
+            ) : h('div', { style: { fontSize: '10px', color: '#718096', textAlign: 'center' } }, '荷箱に売却するセットがありません')
           ),
 
-          p.pos === 6 && me.guildLv < 3 && (
-            h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' } }, [
-              selectedBoxIndices.length > 0 && h('div', { style: { fontSize: '10px', color: '#2b8a3e', fontWeight: 'bold', textAlign: 'center' } },
-                `📦 箱選択中: 🧂${selectedCargoSalt}`
-              ),
-              h('button', {
-                disabled: saltToUse < (me.guildLv === 1 ? 5 : 8),
-                onClick: () => handleFacility('guild'),
-                className: 'btn btn-success',
-                style: { width: '100%', fontSize: '10px', padding: '4px 6px' }
-              }, selectedBoxIndices.length > 0
-                ? `選択箱で🏛️会所Lv+1 (🧂${me.guildLv===1?5:8})`
-                : `🏛️ 会所Lv+1 (🧂${me.guildLv===1?5:8})`
-              )
-            ])
+          // 会所(6): 港で換金した塩 4/7 を支払う
+          p.pos === 6 && (
+            me.guildLv < 3 ? (
+              h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' } }, [
+                h('div', { style: { fontSize: '10px', color: availableSalt > 0 ? '#2b8a3e' : '#718096', fontWeight: 'bold', textAlign: 'center' } },
+                  availableSalt > 0 ? `🧂 所持塩: ${availableSalt}` : `⚠️ 港で換金した塩が必要 (所持: 0)`
+                ),
+                h('button', {
+                  disabled: availableSalt < GUILD_COSTS[me.guildLv - 1],
+                  onClick: () => handleFacility('guild'),
+                  className: 'btn btn-success',
+                  style: { width: '100%', fontSize: '10px', padding: '4px 6px' }
+                }, me.guildLv === 1 ? `🏛️ 会所Lv2 (港+2塩) (🧂4塩)` : `🔥 会所Lv3 (港売却2倍!) (🧂7塩)`)
+              ])
+            ) : h('div', { style: { fontSize: '10px', color: '#2b8a3e', textAlign: 'center' } }, '🏛️ 会所Lv最大 (Lv3: 港2倍!)')
           )
         ]),
 
@@ -1048,10 +955,10 @@ function App() {
       renderTile(TILES[6]), renderTile(TILES[5]), renderTile(TILES[4])
     ]),
 
-    // あなたの手札
+    // あなたの手札（7枚固定）
     h('div', { className: 'section' }, [
       h('div', { className: 'section-title' }, [
-        h('span', null, `🎴 手札 (${me.hand.length}/${myHandLimit}枚)`),
+        h('span', null, `🎴 手札 (${me.hand.length}/${HAND_LIMIT}枚)`),
         isHuman && state.step === 1 && h('span', { style: { color: '#9b2c2c', fontWeight: 'bold' } }, 'カードを選んで進む'),
         isHuman && state.step === 2 && h('span', { style: { color: '#1971c2', fontWeight: 'bold' } }, '山札を引くか、マスのカードを全回収'),
         isHuman && state.step === 3 && (
@@ -1099,57 +1006,76 @@ function App() {
               }
             }
           },
-          (state.step === 3 && selectedHandIds.includes(c.id)) || (state.step === 4 && overflowSelectedIds.includes(c.id))
+          selectedHandIds.includes(c.id),
+          overflowSelectedIds.includes(c.id)
         ))
       )
     ]),
 
-    // 商人手帳（得点・Lv・荷箱）
-    h('div', { className: 'section' }, [
+    // あなたの個人ボード（荷箱3枠 ＆ 会所レベル最大Lv3）
+    h('div', { className: 'section player-board-section' }, [
       h('div', { className: 'section-title' }, [
-        h('span', null, `🏆 得点: ${me.score} / ${WIN_SCORE}点`),
-        h('span', { style: { fontSize: '11px', color: '#718096' } },
-          `🎴上限Lv.${me.handLimitLv} | 📦枠Lv.${me.boxesLv} | 🏛️会所Lv.${me.guildLv}`
-        )
+        h('span', null, '📦 あなたの個人ボード'),
+        h('div', { className: 'levels-badges' }, [
+          h('span', { className: 'level-badge-box' }, `📦 荷箱枠 Lv.${me.boxesLv} (${me.boxesLv}枠 / 最大3枠)`),
+          h('span', { className: 'level-badge-guild' }, `🏛️ 会所 Lv.${me.guildLv} (${getGuildRateLabel(me.guildLv)} / 最大Lv3)`),
+        ])
       ]),
-      isHuman && state.step === 3 && (p.pos === 2 || p.pos === 6 || p.pos === 4) && me.boxes.some(b => b.cargo) && h('div', { style: { fontSize: '10px', color: '#d97706', fontWeight: 'bold' } },
-        '💡 荷箱をクリックして、消費・売却する面子を選択できます'
-      ),
-      h('div', { className: 'boxes-row' },
+
+      h('div', { className: 'cargo-boxes-grid' },
         me.boxes.map((b, idx) => {
-          const isSelected = selectedBoxIndices.includes(idx);
-          const isSelectable = isHuman && state.step === 3 && !!b.cargo;
-          return h('div', {
-            key: idx,
-            onClick: isSelectable ? () => toggleBoxSelection(idx) : undefined,
-            className: `box ${!b.unlocked ? 'locked' : b.cargo ? 'has-cargo' : b.salt > 0 ? 'has-salt' : ''} ${isSelectable ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`
-          }, [
-            h('div', { style: { display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' } }, [
-              h('span', null, `📦 箱${idx + 1}`),
-              isSelected && h('span', { style: { color: '#d97706', fontSize: '10px' } }, '✓ 選択中'),
-              !isSelected && b.salt > 0 && h('span', { style: { color: '#2b6cb0' } }, `🧂×${b.salt}`)
-            ]),
-            !b.unlocked ? (
-              h('span', { style: { textAlign: 'center', margin: 'auto 0', color: '#a0aec0' } }, '🔒 未解放')
-            ) : b.cargo ? (
-              h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', margin: 'auto 0' } }, [
-                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
-                  h('span', { style: { fontWeight: 'bold' } }, b.cargo.name),
-                  isHuman && state.step === 3 && p.pos === 4 && h('button', {
-                    onClick: (e) => { e.stopPropagation(); handlePortSellBox(idx); },
-                    className: 'btn btn-primary',
-                    style: { padding: '2px 6px', fontSize: '10px' }
-                  }, '⚓ 売却')
-                ]),
-                h('div', { style: { fontSize: '10px', color: '#4a5568' } }, [
-                  `🧂${b.cargo.salt}`
-                ])
-              ])
-            ) : b.salt > 0 ? (
-              h('span', { style: { fontSize: '10px', color: '#2b6cb0', fontWeight: 'bold', margin: 'auto 0' } }, '🏡 地元で得点化')
-            ) : (
-              h('span', { style: { textAlign: 'center', color: '#a0aec0', margin: 'auto 0' } }, '📦 空き')
-            )
+          if (!b.unlocked) {
+            return h('div', { key: idx, className: 'cargo-box-card box-locked' }, [
+              h('div', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
+              h('div', { className: 'cargo-box-empty-text' }, `🔒 未拡張 (箱屋: 🧂${BOX_COSTS[idx - 1]}塩)`)
+            ]);
+          }
+
+          if (b.salt > 0) {
+            return h('div', {
+              key: idx,
+              className: `cargo-box-card box-has-salt`
+            }, [
+              h('div', { className: 'cargo-box-header' }, [
+                h('span', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
+                h('span', { className: 'cargo-badge-salt' }, `換金済み`)
+              ]),
+              h('div', { className: 'cargo-salt-display' }, [
+                h('span', { className: 'cargo-salt-icon' }, '🧂'),
+                h('span', { className: 'cargo-salt-val' }, b.salt),
+                h('span', { className: 'cargo-salt-unit' }, '塩')
+              ]),
+              h('div', { style: { fontSize: '10px', color: '#4a5568' } }, '箱屋/会所で支払 or 地元で得点')
+            ]);
+          }
+
+          if (b.cargo) {
+            const isPort = (isHuman && state.step === 3 && p.pos === 4);
+            const salePrice = calcPortSale(b.cargo.salt, me.guildLv);
+            return h('div', {
+              key: idx,
+              className: `cargo-box-card box-loaded`
+            }, [
+              h('div', { className: 'cargo-box-header' }, [
+                h('span', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
+                h('span', { className: 'cargo-badge-res' }, `荷物`)
+              ]),
+              h('div', { className: 'cargo-box-name' }, b.cargo.name),
+              h('div', { className: 'cargo-box-vals' }, [
+                h('span', { className: 'cargo-val-pill' }, `🧂${b.cargo.salt}塩`),
+                me.guildLv === 3 && h('span', { className: 'cargo-val-pill', style: { background: '#f59e0b', color: '#fff' } }, '🔥2倍')
+              ]),
+              isPort && h('button', {
+                onClick: () => handlePortSellBox(idx),
+                className: 'btn btn-primary',
+                style: { marginTop: '4px', fontSize: '10px', padding: '2px 6px' }
+              }, `⚓ 売却 ➔ 🧂${salePrice}塩`)
+            ]);
+          }
+
+          return h('div', { key: idx, className: 'cargo-box-card box-empty' }, [
+            h('div', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
+            h('div', { className: 'cargo-box-empty-text' }, '空き')
           ]);
         })
       )
