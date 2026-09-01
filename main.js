@@ -160,6 +160,7 @@ function initGame() {
     turn: 0,
     step: 1, // 1: 移動, 2: 行動＆補充, 4: 返却
     facilityUsed: false,
+    replenished: false,
     gameOver: false,
     excessCount: 0
   };
@@ -168,6 +169,7 @@ function initGame() {
 function App() {
   const [state, setState] = useState(initGame);
   const [overflowSelectedIds, setOverflowSelectedIds] = useState([]);
+  const [selectedHandIds, setSelectedHandIds] = useState([]);
 
   const p = state.players[state.turn];
   const isHuman = (state.turn === 0);
@@ -177,6 +179,18 @@ function App() {
   const mySets = useMemo(() => findSets(me.hand), [me.hand]);
   const availablePorter = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0), [me.boxes]);
   const availablePack = useMemo(() => me.boxes.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0), [me.boxes]);
+
+  // 手札で選択されたカードとセット判定
+  const selectedCards = useMemo(() => {
+    return me.hand.filter(c => selectedHandIds.includes(c.id));
+  }, [me.hand, selectedHandIds]);
+
+  const selectedSetInfo = useMemo(() => {
+    if (selectedCards.length === 3) {
+      return evalSet(selectedCards);
+    }
+    return null;
+  }, [selectedCards]);
 
   // Step 1: 移動
   const handleMove = (cardIdx) => {
@@ -193,16 +207,40 @@ function App() {
       hand: remainingHand
     } : pl);
 
+    setSelectedHandIds([]);
     setState(prev => ({
       ...prev,
       road: newRoad,
       players: newPlayers,
       step: 2,
-      facilityUsed: false
+      facilityUsed: false,
+      replenished: false
     }));
   };
 
-  // 荷箱にセットを置く
+  // 選択した手札3枚を荷箱に積む
+  const handlePackSelectedCards = () => {
+    if (!selectedSetInfo) return;
+    const emptyIdx = me.boxes.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
+    if (emptyIdx === -1) return;
+
+    const ids = selectedCards.map(c => c.id);
+    const remainingHand = me.hand.filter(c => !ids.includes(c.id));
+
+    const newPlayers = state.players.map((pl, i) => {
+      if (i !== 0) return pl;
+      return {
+        ...pl,
+        hand: remainingHand,
+        boxes: pl.boxes.map((b, bI) => bI === emptyIdx ? { ...b, cargo: selectedSetInfo } : b)
+      };
+    });
+
+    setSelectedHandIds([]);
+    setState(prev => ({ ...prev, players: newPlayers }));
+  };
+
+  // 荷箱にセットを置く（自動検出セット用）
   const handlePackSet = (setObj) => {
     const emptyIdx = me.boxes.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
     if (emptyIdx === -1 || !setObj) return;
@@ -219,6 +257,7 @@ function App() {
       };
     });
 
+    setSelectedHandIds([]);
     setState(prev => ({ ...prev, players: newPlayers }));
   };
 
@@ -331,8 +370,8 @@ function App() {
 
   // 補充
   const handleReplenishDeck = () => {
-    if (!isHuman || state.step !== 2) return;
-    const needed = myHandLimit - me.hand.length;
+    if (!isHuman || state.step !== 2 || state.replenished) return;
+    const needed = Math.max(0, myHandLimit - me.hand.length);
     const res = drawSafe(needed, state.deck, state.discard);
 
     const newPlayers = state.players.map((pl, i) => i === 0 ? {
@@ -340,41 +379,24 @@ function App() {
       hand: [...pl.hand, ...res.drawn]
     } : pl);
 
+    setSelectedHandIds([]);
     setState(prev => ({
       ...prev,
       deck: res.newDeck,
       discard: res.newDiscard,
       players: newPlayers,
-      turn: 1,
-      step: 1,
-      facilityUsed: false
+      replenished: true
     }));
   };
 
   const handleReplenishRoad = () => {
-    if (!isHuman || state.step !== 2) return;
+    if (!isHuman || state.step !== 2 || state.replenished) return;
     const roadCards = state.road[p.pos] || [];
     const combinedHand = [...me.hand, ...roadCards];
     const newRoad = state.road.map((arr, i) => i === p.pos ? [] : arr);
 
-    if (combinedHand.length < myHandLimit) {
-      const needed = myHandLimit - combinedHand.length;
-      const res = drawSafe(needed, state.deck, state.discard);
-      const newPlayers = state.players.map((pl, i) => i === 0 ? {
-        ...pl,
-        hand: [...combinedHand, ...res.drawn]
-      } : pl);
-      setState(prev => ({
-        ...prev,
-        deck: res.newDeck,
-        discard: res.newDiscard,
-        road: newRoad,
-        players: newPlayers,
-        turn: 1,
-        step: 1,
-        facilityUsed: false
-      }));
-    } else if (combinedHand.length > myHandLimit) {
+    setSelectedHandIds([]);
+    if (combinedHand.length > myHandLimit) {
       const excess = combinedHand.length - myHandLimit;
       const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: combinedHand } : pl);
       setOverflowSelectedIds([]);
@@ -391,9 +413,7 @@ function App() {
         ...prev,
         road: newRoad,
         players: newPlayers,
-        turn: 1,
-        step: 1,
-        facilityUsed: false
+        replenished: true
       }));
     }
   };
@@ -407,14 +427,28 @@ function App() {
 
     const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: finalHand } : pl);
     setOverflowSelectedIds([]);
+    setSelectedHandIds([]);
 
     setState(prev => ({
       ...prev,
       road: newRoad,
       players: newPlayers,
+      step: 2,
+      replenished: true
+    }));
+  };
+
+  // 手番終了
+  const handleEndTurn = () => {
+    if (!isHuman || state.step !== 2) return;
+    setSelectedHandIds([]);
+    setOverflowSelectedIds([]);
+    setState(prev => ({
+      ...prev,
       turn: 1,
       step: 1,
-      facilityUsed: false
+      facilityUsed: false,
+      replenished: false
     }));
   };
 
@@ -520,8 +554,8 @@ function App() {
         }
         // 6: 会所
         else if (curr.pos === 6 && curr.guildLv < 3) {
-          const reqP = me.guildLv === 1 ? 1 : 3;
-          const reqK = me.guildLv === 1 ? 1 : 3;
+          const reqP = curr.guildLv === 1 ? 1 : 3;
+          const reqK = curr.guildLv === 1 ? 1 : 3;
           const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
           const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
           if (totalPorter >= reqP && totalPack >= reqK) {
@@ -559,12 +593,7 @@ function App() {
           const combined = [...hnd, ...roadStack];
           newRoad = state.road.map((arr, i) => i === curr.pos ? [] : arr);
 
-          if (combined.length < botHandLimit) {
-            const res = drawSafe(botHandLimit - combined.length, newDeck, newDiscard);
-            hnd = [...combined, ...res.drawn];
-            newDeck = res.newDeck;
-            newDiscard = res.newDiscard;
-          } else if (combined.length > botHandLimit) {
+          if (combined.length > botHandLimit) {
             const excess = combined.length - botHandLimit;
             const toReturn = combined.splice(0, excess);
             hnd = combined;
@@ -577,6 +606,16 @@ function App() {
           hnd = [...hnd, ...res.drawn];
           newDeck = res.newDeck;
           newDiscard = res.newDiscard;
+        }
+
+        // 補充後にもセットがあれば積む
+        const setsAfter = findSets(hnd);
+        const emptyIdxAfter = bxs.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
+        if (setsAfter.length > 0 && emptyIdxAfter !== -1) {
+          const chosen = setsAfter[0];
+          const ids = chosen.trio.map(c => c.id);
+          hnd = hnd.filter(c => !ids.includes(c.id));
+          bxs[emptyIdxAfter] = { ...bxs[emptyIdxAfter], cargo: chosen.info };
         }
 
         const nextTurn = (state.turn + 1) % 4;
@@ -595,7 +634,9 @@ function App() {
           players: newPlayers,
           gameOver: sc >= WIN_SCORE,
           turn: nextTurn,
-          step: 1
+          step: 1,
+          facilityUsed: false,
+          replenished: false
         }));
       }
     }, 450);
@@ -694,8 +735,17 @@ function App() {
 
       return h('div', { className: 'center-hub step-2' }, [
         h('div', { className: 'center-actions' }, [
-          // セットを置く
-          mySets.length > 0 && hasEmptyBox && (
+          // 選択した3枚を積む
+          selectedSetInfo && hasEmptyBox && (
+            h('button', {
+              onClick: handlePackSelectedCards,
+              className: 'btn btn-success',
+              style: { width: '100%', fontSize: '11px', padding: '4px 6px', fontWeight: 'bold' }
+            }, `📦 ${selectedSetInfo.name} を積む`)
+          ),
+
+          // 自動検出セットをクイックに積む
+          !selectedSetInfo && mySets.length > 0 && hasEmptyBox && (
             h('div', { style: { display: 'flex', gap: '3px', flexDirection: 'column' } },
               mySets.map(s => h('button', {
                 key: s.key,
@@ -755,19 +805,27 @@ function App() {
           )
         ]),
 
-        // 補充
-        h('div', { style: { display: 'flex', gap: '4px', width: '100%' } }, [
+        // 補充 または 手番終了
+        !state.replenished ? (
+          h('div', { style: { display: 'flex', gap: '4px', width: '100%' } }, [
+            h('button', {
+              onClick: handleReplenishDeck,
+              className: 'btn btn-primary',
+              style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
+            }, `① 🎴 山札引く`),
+            h('button', {
+              onClick: handleReplenishRoad,
+              className: 'btn btn-purple',
+              style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
+            }, `② 🖐️ 全回収(${roadCount})`)
+          ])
+        ) : (
           h('button', {
-            onClick: handleReplenishDeck,
-            className: 'btn btn-primary',
-            style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
-          }, `① 🎴 山札引く`),
-          h('button', {
-            onClick: handleReplenishRoad,
-            className: 'btn btn-purple',
-            style: { flex: 1, fontSize: '10px', padding: '5px 2px' }
-          }, `② 🖐️ 全回収(${roadCount})`)
-        ])
+            onClick: handleEndTurn,
+            className: 'btn btn-dark',
+            style: { width: '100%', fontSize: '11px', padding: '6px 4px', fontWeight: 'bold' }
+          }, '🏁 手番を終了する')
+        )
       ]);
     }
 
@@ -800,12 +858,14 @@ function App() {
     ]);
   }
 
+  const hasEmptyBox = me.boxes.some(b => b.unlocked && !b.cargo && b.salt === 0);
+
   return h('div', { className: 'app' }, [
 
     // ヘッダー
     h('header', { className: 'header' }, [
       h('div', { className: 'header-title' }, [
-        h('span', null, '🏮 『ナウキ運び』'),
+        h('span', null, '🏮 ナウキ運び'),
         h('span', { className: `header-turn-badge ${isHuman ? 'turn-me' : 'turn-bot'}` }, `手番: ${p.name}`)
       ]),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, [
@@ -857,14 +917,46 @@ function App() {
       h('div', { className: 'section-title' }, [
         h('span', null, `🎴 手札 (${me.hand.length}/${myHandLimit}枚)`),
         isHuman && state.step === 1 && h('span', { style: { color: '#9b2c2c', fontWeight: 'bold' } }, 'カードを選んで進む'),
+        isHuman && state.step === 2 && (
+          selectedSetInfo ? (
+            hasEmptyBox ? (
+              h('button', {
+                onClick: handlePackSelectedCards,
+                className: 'btn btn-success',
+                style: { padding: '2px 8px', fontSize: '11px' }
+              }, `📦 ${selectedSetInfo.name} を荷箱に積む`)
+            ) : (
+              h('span', { style: { color: '#d97706', fontSize: '11px' } }, '⚠️ 空きの荷箱がありません')
+            )
+          ) : selectedHandIds.length === 3 ? (
+            h('span', { style: { color: '#c92a2a', fontSize: '11px' } }, '⚠️ 3枚組になりません')
+          ) : (
+            h('span', { style: { color: '#666', fontSize: '11px' } },
+              selectedHandIds.length > 0
+                ? `${selectedHandIds.length}/3枚選択中`
+                : (mySets.length > 0 && hasEmptyBox)
+                  ? '手札3枚を選んで荷詰め'
+                  : state.replenished
+                    ? '荷積み・施設を行うか手番を終了'
+                    : '行動または補充を行ってください'
+            )
+          )
+        ),
         isHuman && state.step === 4 && h('span', { style: { color: '#6b46c1', fontWeight: 'bold' } }, `↩️ 戻すカードを選択 (${overflowSelectedIds.length}/${state.excessCount})`)
       ]),
       h('div', { className: 'card-row' },
         me.hand.map((c, idx) => renderCard(
           c,
           () => {
-            if (isHuman && state.step === 1) handleMove(idx);
-            else if (isHuman && state.step === 4) {
+            if (isHuman && state.step === 1) {
+              handleMove(idx);
+            } else if (isHuman && state.step === 2) {
+              if (selectedHandIds.includes(c.id)) {
+                setSelectedHandIds(selectedHandIds.filter(id => id !== c.id));
+              } else if (selectedHandIds.length < 3) {
+                setSelectedHandIds([...selectedHandIds, c.id]);
+              }
+            } else if (isHuman && state.step === 4) {
               if (overflowSelectedIds.includes(c.id)) {
                 setOverflowSelectedIds(overflowSelectedIds.filter(id => id !== c.id));
               } else if (overflowSelectedIds.length < state.excessCount) {
@@ -872,7 +964,7 @@ function App() {
               }
             }
           },
-          overflowSelectedIds.includes(c.id)
+          (state.step === 2 && selectedHandIds.includes(c.id)) || (state.step === 4 && overflowSelectedIds.includes(c.id))
         ))
       )
     ]),
