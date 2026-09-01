@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ナウキ運び バランスシミュレーター ダッシュボード</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="dash-header">
+    <div class="dash-title">
+      <span>📊 ナウキ運び バランスシミュレーター</span>
+      <span class="dash-badge">AI Analysis & Metrics</span>
+    </div>
+    <a href="index.html" class="nav-btn">
+      <span>🏮</span>
+      <span>ゲームプレイに戻る</span>
+    </a>
+  </header>
+
+  <!-- Main Container -->
+  <div class="dash-container">
+
+    <!-- Left: Controls Panel -->
+    <aside class="controls-panel">
+
+      <!-- Presets Card -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>⚡ 戦略対決 プリセット</span>
+        </div>
+        <div class="preset-grid">
+          <button class="preset-btn active" data-preset="four_builds">4大戦略トーナメント</button>
+          <button class="preset-btn" data-preset="hand_vs_rush">手札拡張 vs 茶塩速攻</button>
+          <button class="preset-btn" data-preset="boxes_vs_guild">荷箱特化 vs 会所特化</button>
+          <button class="preset-btn" data-preset="all_adaptive">状況適応型 4人対決</button>
+        </div>
+      </div>
+
+      <!-- Player Setup Card -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>👥 プレイヤー戦略設定</span>
+        </div>
+
+        <div class="player-setup-row">
+          <div class="player-avatar-badge" style="background: #38bdf8;">P1</div>
+          <select id="p1Strategy" class="player-setup-select">
+            <option value="hand_limit" selected>🎴 手札拡張型 (HandLimit)</option>
+            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
+            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
+            <option value="tea_rush">⚡ 茶塩速攻型 (Tea Rush)</option>
+            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+          </select>
+        </div>
+
+        <div class="player-setup-row">
+          <div class="player-avatar-badge" style="background: #a78bfa;">P2</div>
+          <select id="p2Strategy" class="player-setup-select">
+            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
+            <option value="cargo_boxes" selected>📦 荷箱特化型 (CargoBoxes)</option>
+            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
+            <option value="tea_rush">⚡ 茶塩速攻型 (Tea Rush)</option>
+            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+          </select>
+        </div>
+
+        <div class="player-setup-row">
+          <div class="player-avatar-badge" style="background: #34d399;">P3</div>
+          <select id="p3Strategy" class="player-setup-select">
+            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
+            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
+            <option value="guild_bonus" selected>🏛️ 会所特化型 (GuildBonus)</option>
+            <option value="tea_rush">⚡ 茶塩速攻型 (Tea Rush)</option>
+            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+          </select>
+        </div>
+
+        <div class="player-setup-row">
+          <div class="player-avatar-badge" style="background: #fbbf24;">P4</div>
+          <select id="p4Strategy" class="player-setup-select">
+            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
+            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
+            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
+            <option value="tea_rush" selected>⚡ 茶塩速攻型 (Tea Rush)</option>
+            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Parameters Card -->
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>⚙️ ゲームバランス パラメーター</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">シミュレーション試合数</label>
+          <select id="numGames" class="form-select">
+            <option value="100">100 試合 (超高速)</option>
+            <option value="500">500 試合</option>
+            <option value="1000" selected>1,000 試合 (標準)</option>
+            <option value="3000">3,000 試合 (高精度)</option>
+            <option value="5000">5,000 試合 (超高精度)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">勝利目標得点 (点)</label>
+          <input type="number" id="winScore" class="form-input" value="20" min="5" max="100">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">初期手札枚数</label>
+          <input type="number" id="initialHand" class="form-input" value="5" min="1" max="10">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">手札上限 Lv1 / Lv2 / Lv3 (枚)</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+            <input type="number" id="handLimitLv1" class="form-input" value="5" min="1" max="15">
+            <input type="number" id="handLimitLv2" class="form-input" value="7" min="1" max="15">
+            <input type="number" id="handLimitLv3" class="form-input" value="10" min="1" max="15">
+          </div>
+        </div>
+
+        <button id="btnRun" class="btn-run" style="margin-top: 14px;">
+          <span>▶</span>
+          <span>シミュレーション実行</span>
+        </button>
+
+        <div id="progressContainer" class="progress-container">
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar-inner"></div>
+          </div>
+          <div id="progressText" class="progress-text">準備中...</div>
+        </div>
+
+      </div>
+
+    </aside>
+
+    <!-- Right: Visualizer & Results -->
+    <main class="results-panel">
+
+      <!-- KPI Grid -->
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-blue">
+          <span class="kpi-label">平均決着ラウンド</span>
+          <span id="kpiAvgRounds" class="kpi-val">-- 巡</span>
+          <span id="kpiMedianRounds" class="kpi-sub">中央値: -- 巡</span>
+        </div>
+
+        <div class="kpi-card kpi-gold">
+          <span class="kpi-label">トップ勝率プレイヤー</span>
+          <span id="kpiTopPlayer" class="kpi-val">--</span>
+          <span id="kpiTopWinRate" class="kpi-sub">勝率 --%</span>
+        </div>
+
+        <div class="kpi-card kpi-green">
+          <span class="kpi-label">🏆 優勝者 平均施設Lv</span>
+          <span id="kpiWinnerLvs" class="kpi-val" style="font-size: 18px;">--</span>
+          <span class="kpi-sub">🎴手札 / 📦荷箱 / 🏛️会所</span>
+        </div>
+
+        <div class="kpi-card kpi-purple">
+          <span class="kpi-label">シミュレーション速度</span>
+          <span id="kpiSpeed" class="kpi-val">-- 試合/秒</span>
+          <span id="kpiTime" class="kpi-sub">実行時間: -- 秒</span>
+        </div>
+      </div>
+
+      <!-- Charts Grid -->
+      <div class="charts-grid">
+
+        <!-- Chart 1: Win Rate -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">
+              <span>🏆</span>
+              <span>プレイヤー別 勝率割合</span>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="chartWinRate"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Turn Order Bias -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">
+              <span>⚖️</span>
+              <span>手番順（座順）バイアス分析</span>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="chartTurnBias"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 3: Round Distribution -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title">
+              <span>📈</span>
+              <span>決着ラウンド数（ゲームテンポ）の分布度数</span>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="chartRoundDist"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 4: Facility Upgrades -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div class="chart-title">
+              <span>🛖</span>
+              <span>施設強化・拡大再生産レベルの到達度</span>
+            </div>
+            <div class="chart-toggle-group">
+              <button class="facility-toggle-btn active" data-mode="winner">🏆 優勝時(勝者)</button>
+              <button class="facility-toggle-btn" data-mode="all">👥 全試合平均</button>
+            </div>
+          </div>
+          <div class="chart-body">
+            <canvas id="chartFacility"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Detailed Data Table -->
+      <div class="table-card">
+        <div class="panel-title" style="margin-bottom: 12px;">
+          <span>📋 プレイヤー別 詳細スタッツ一覧</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>順位</th>
+              <th>座順</th>
+              <th>戦略名</th>
+              <th>勝利数 / 試合数</th>
+              <th>勝率</th>
+              <th>平均得点</th>
+              <th style="color: #fbbf24;">🏆 勝者 手札Lv</th>
+              <th style="color: #a78bfa;">🏆 勝者 荷箱Lv</th>
+              <th style="color: #34d399;">🏆 勝者 会所Lv</th>
+              <th style="color: #94a3b8;">全試合 平均Lv</th>
+            </tr>
+          </thead>
+          <tbody id="statsTableBody">
+            <!-- Dynamic rows -->
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
