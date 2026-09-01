@@ -8,36 +8,36 @@ const GOODS = {
 
 const CARD_TEMPLATES = {
   tea: [
-    { num: 1, salt: 2, porter: 0, pack: 0 },
+    { num: 1, salt: 2, porter: 1, pack: 0 },
     { num: 2, salt: 1, porter: 1, pack: 0 },
     { num: 3, salt: 1, porter: 0, pack: 0 },
-    { num: 4, salt: 1, porter: 0, pack: 1 },
-    { num: 5, salt: 2, porter: 0, pack: 0 },
+    { num: 4, salt: 0, porter: 1, pack: 1 },
+    { num: 5, salt: 2, porter: 0, pack: 1 },
   ],
   rice: [
-    { num: 1, salt: 0, porter: 2, pack: 0 },
-    { num: 2, salt: 1, porter: 1, pack: 0 },
+    { num: 1, salt: 0, porter: 2, pack: 1 },
+    { num: 2, salt: 0, porter: 1, pack: 1 },
     { num: 3, salt: 0, porter: 1, pack: 0 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 0, porter: 2, pack: 0 },
+    { num: 4, salt: 1, porter: 0, pack: 1 },
+    { num: 5, salt: 1, porter: 2, pack: 0 },
   ],
   cloth: [
-    { num: 1, salt: 0, porter: 0, pack: 2 },
+    { num: 1, salt: 1, porter: 0, pack: 2 },
     { num: 2, salt: 1, porter: 0, pack: 1 },
     { num: 3, salt: 0, porter: 0, pack: 1 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 0, porter: 0, pack: 2 },
+    { num: 4, salt: 1, porter: 1, pack: 0 },
+    { num: 5, salt: 0, porter: 1, pack: 2 },
   ]
 };
 
 const TILES = [
-  { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品' },
+  { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品', costText: '1塩＝1点' },
   { pos: 1, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張' },
-  { pos: 3, name: '山道', icon: '⛰️', isFacility: false },
-  { pos: 4, name: '港', icon: '⚓', isFacility: true, short: '売却' },
+  { pos: 2, name: '箱屋', icon: '🛖', isFacility: true, short: '拡張', costText: '🛞2/4 📦2/4' },
+  { pos: 3, name: '街道', icon: '🛣️', isFacility: false },
+  { pos: 4, name: '港', icon: '⚓', isFacility: true, short: '売却', costText: '塩＋会所(+0/+3/+6)' },
   { pos: 5, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化' },
+  { pos: 6, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '🛞2📦2 / 🛞3📦3' },
   { pos: 7, name: '街道', icon: '🛣️', isFacility: false },
 ];
 
@@ -344,7 +344,7 @@ function App() {
   const handlePortSellBox = (boxIdx) => {
     const box = me.boxes[boxIdx];
     if (!isHuman || state.step !== 3 || p.pos !== 4 || !box || !box.cargo) return;
-    const bonus = me.guildLv === 1 ? 0 : me.guildLv === 2 ? 2 : 4;
+    const bonus = me.guildLv === 1 ? 0 : me.guildLv === 2 ? 3 : 6;
     const gain = box.cargo.salt + bonus;
     const returnedCards = box.cargo.cards || [];
 
@@ -431,8 +431,8 @@ function App() {
     }
     // 6: 会所
     else if (pos === 6 && type === 'guild' && me.guildLv < 3) {
-      const reqP = me.guildLv === 1 ? 1 : 2;
-      const reqK = me.guildLv === 1 ? 1 : 2;
+      const reqP = me.guildLv === 1 ? 2 : 3;
+      const reqK = me.guildLv === 1 ? 2 : 3;
       const useSelected = selectedBoxIndices.length > 0;
       const porterToUse = useSelected ? selectedPorter : availablePorter;
       const packToUse = useSelected ? selectedPack : availablePack;
@@ -705,7 +705,7 @@ function App() {
         }
         // 4: 港
         else if (curr.pos === 4) {
-          const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 2 : 4;
+          const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
           bxs = bxs.map(b => {
             if (b.unlocked && b.cargo) {
               const gain = b.cargo.salt + bonus;
@@ -718,7 +718,7 @@ function App() {
         // 2: 箱屋
         else if (curr.pos === 2) {
           if (curr.handLimitLv < 3) {
-            const cost = curr.handLimitLv === 1 ? 3 : 5;
+            const cost = curr.handLimitLv === 1 ? 2 : 4;
             const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
             if (totalPorter >= cost) {
               let rem = cost;
@@ -734,7 +734,7 @@ function App() {
             }
           }
           if (curr.boxesLv < 3) {
-            const cost = curr.boxesLv === 1 ? 3 : 5;
+            const cost = curr.boxesLv === 1 ? 2 : 4;
             const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
             if (totalPack >= cost) {
               let rem = cost;
@@ -753,8 +753,8 @@ function App() {
         }
         // 6: 会所
         else if (curr.pos === 6 && curr.guildLv < 3) {
-          const reqP = curr.guildLv === 1 ? 1 : 3;
-          const reqK = curr.guildLv === 1 ? 1 : 3;
+          const reqP = curr.guildLv === 1 ? 2 : 3;
+          const reqK = curr.guildLv === 1 ? 2 : 3;
           const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
           const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
           if (totalPorter >= reqP && totalPack >= reqK) {
@@ -860,6 +860,8 @@ function App() {
           roadCards.length > 0 && h('span', { style: { fontSize: '10px', color: '#e67700', fontWeight: 'bold' } }, `🃏${roadCards.length}`)
         )
       ]),
+
+      t.isFacility && t.costText && h('div', { className: 'tile-cost-tag' }, t.costText),
 
       h('div', { className: 'tile-players' },
         playersHere.map(pl => h('div', {
@@ -1022,14 +1024,14 @@ function App() {
                 `📦 箱選択中: 🛞${selectedPorter} / 📦${selectedPack}`
               ),
               h('button', {
-                disabled: (selectedBoxIndices.length > 0 ? selectedPorter : availablePorter) < (me.guildLv === 1 ? 1 : 2) ||
-                          (selectedBoxIndices.length > 0 ? selectedPack : availablePack) < (me.guildLv === 1 ? 1 : 2),
+                disabled: (selectedBoxIndices.length > 0 ? selectedPorter : availablePorter) < (me.guildLv === 1 ? 2 : 3) ||
+                          (selectedBoxIndices.length > 0 ? selectedPack : availablePack) < (me.guildLv === 1 ? 2 : 3),
                 onClick: () => handleFacility('guild'),
                 className: 'btn btn-success',
                 style: { width: '100%', fontSize: '10px', padding: '4px 6px' }
               }, selectedBoxIndices.length > 0
-                ? `選択箱で🏛️会所Lv+1 (🛞${me.guildLv===1?1:2}+📦${me.guildLv===1?1:2})`
-                : `🏛️ 会所Lv+1 (🛞${me.guildLv===1?1:2}+📦${me.guildLv===1?1:2})`
+                ? `選択箱で🏛️会所Lv+1 (🛞${me.guildLv===1?2:3}+📦${me.guildLv===1?2:3})`
+                : `🏛️ 会所Lv+1 (🛞${me.guildLv===1?2:3}+📦${me.guildLv===1?2:3})`
               )
             ])
           )

@@ -217,7 +217,7 @@ function createBaseStrategy(name, weights, customLogic) {
         // 3. 共通: 港(4)での売却
         else if (target === 4) {
           if (hasCargo) {
-            const bonus = player.guildLv === 1 ? 0 : player.guildLv === 2 ? 3 : 6;
+            const bonus = [0,3,7][player.guildLv - 1];
             const expectedSalt = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt + bonus : 0), 0);
             score += 140 + expectedSalt * 15 + cargoCount * 30;
           } else {
@@ -317,8 +317,8 @@ const GuildBonusBot = createBaseStrategy(
   {
     getTargetBonus(target, player, state) {
       if (target === 6 && player.guildLv < 3) {
-        const reqP = player.guildLv === 1 ? 2 : 3;
-        const reqK = player.guildLv === 1 ? 2 : 3;
+        const reqP = player.guildLv === 1 ? 1 : 2;
+        const reqK = player.guildLv === 1 ? 1 : 2;
         const availablePorter = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
         const availablePack = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
         if (availablePorter >= reqP && availablePack >= reqK) return 185;
@@ -357,40 +357,13 @@ const AdaptiveBot = createBaseStrategy(
         if (player.handLimitLv === 1 && availablePorter >= 3) return 110;
         if (player.boxesLv === 1 && availablePack >= 3) return 120;
       }
-      if (target === 6 && player.guildLv === 1 && availablePorter >= 2 && availablePack >= 2) {
+      if (target === 6 && player.guildLv === 1 && availablePorter >= 1 && availablePack >= 1) {
         return 115;
       }
       return 0;
     }
   }
 );
-
-// 6. ランダム型 (Random Baseline Bot)
-const RandomBot = {
-  name: 'ランダム型',
-  desc: '合法手から完全ランダムに選択するベースライン検証AI',
-  color: '#94a3b8',
-  weights: { salt: 1, porter: 1, pack: 1, tea: 1, rice: 1, cloth: 1 },
-  chooseMove(player, state) {
-    if (!player.hand || player.hand.length === 0) return 0;
-    return Math.floor(Math.random() * player.hand.length);
-  },
-  shouldReplenishRoad(player, state) {
-    const roadCards = state.road[player.pos] || [];
-    if (roadCards.length === 0) return false;
-    return Math.random() < 0.5;
-  },
-  chooseExcessReturns(player, excessCount) {
-    const hList = [...player.hand];
-    return hList.sort(() => Math.random() - 0.5).slice(0, excessCount).map(c => c.id);
-  },
-  decideCargoLoading(player, availableSets) {
-    const emptySlots = player.boxes.filter(b => b.unlocked && !b.cargo && b.salt === 0).length;
-    if (emptySlots === 0 || availableSets.length === 0) return [];
-    const shuffled = [...availableSets].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, emptySlots);
-  }
-};
 
 
 // ----------------------------------------------------
@@ -507,7 +480,7 @@ function runSingleGame(botStrategies, winScore = 20) {
     }
     // 4: 港
     else if (curr.pos === 4) {
-      const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
+      const bonus = [0,3,7][curr.guildLv - 1];
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
           const gain = b.cargo.salt + bonus;
@@ -555,8 +528,8 @@ function runSingleGame(botStrategies, winScore = 20) {
     }
     // 6: 会所
     else if (curr.pos === 6 && curr.guildLv < 3) {
-      const reqP = curr.guildLv === 1 ? 2 : 3;
-      const reqK = curr.guildLv === 1 ? 2 : 3;
+      const reqP = curr.guildLv === 1 ? 1 : 2;
+      const reqK = curr.guildLv === 1 ? 1 : 2;
       const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
       const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
       if (totalPorter >= reqP && totalPack >= reqK) {
@@ -628,12 +601,6 @@ function runSimulation(numGames = 1000, matchup = 'four_builds', winScore = 20) 
     bots = [CargoBoxesBot, GuildBonusBot, CargoBoxesBot, GuildBonusBot];
   } else if (matchup === 'all_adaptive') {
     bots = [AdaptiveBot, AdaptiveBot, AdaptiveBot, AdaptiveBot];
-  } else if (matchup === 'smart_vs_random') {
-    bots = [AdaptiveBot, RandomBot, RandomBot, RandomBot];
-  } else if (matchup === 'all_random') {
-    bots = [RandomBot, RandomBot, RandomBot, RandomBot];
-  } else if (matchup === 'builds_vs_random') {
-    bots = [GuildBonusBot, HandLimitBot, TeaRushBot, RandomBot];
   } else {
     bots = [HandLimitBot, CargoBoxesBot, GuildBonusBot, TeaRushBot];
   }

@@ -9,25 +9,25 @@
 
 const CARD_TEMPLATES = {
   tea: [
-    { num: 1, salt: 2, porter: 0, pack: 0 },
+    { num: 1, salt: 2, porter: 1, pack: 0 },
     { num: 2, salt: 1, porter: 1, pack: 0 },
     { num: 3, salt: 1, porter: 0, pack: 0 },
-    { num: 4, salt: 1, porter: 0, pack: 1 },
-    { num: 5, salt: 2, porter: 0, pack: 0 },
+    { num: 4, salt: 0, porter: 1, pack: 1 },
+    { num: 5, salt: 2, porter: 0, pack: 1 },
   ],
   rice: [
-    { num: 1, salt: 0, porter: 2, pack: 0 },
-    { num: 2, salt: 1, porter: 1, pack: 0 },
+    { num: 1, salt: 0, porter: 2, pack: 1 },
+    { num: 2, salt: 0, porter: 1, pack: 1 },
     { num: 3, salt: 0, porter: 1, pack: 0 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 0, porter: 2, pack: 0 },
+    { num: 4, salt: 1, porter: 0, pack: 1 },
+    { num: 5, salt: 1, porter: 2, pack: 0 },
   ],
   cloth: [
-    { num: 1, salt: 0, porter: 0, pack: 2 },
+    { num: 1, salt: 1, porter: 0, pack: 2 },
     { num: 2, salt: 1, porter: 0, pack: 1 },
     { num: 3, salt: 0, porter: 0, pack: 1 },
-    { num: 4, salt: 0, porter: 1, pack: 1 },
-    { num: 5, salt: 0, porter: 0, pack: 2 },
+    { num: 4, salt: 1, porter: 1, pack: 0 },
+    { num: 5, salt: 0, porter: 1, pack: 2 },
   ]
 };
 
@@ -201,7 +201,7 @@ function createBaseStrategy(name, desc, color, weights, customLogic) {
         // 3. 共通: 港(4)での売却
         else if (target === 4) {
           if (hasCargo) {
-            const bonus = player.guildLv === 1 ? 0 : player.guildLv === 2 ? 2 : 4;
+            const bonus = player.guildLv === 1 ? 0 : player.guildLv === 2 ? 3 : 6;
             const expectedSalt = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.salt + bonus : 0), 0);
             score += 140 + expectedSalt * 15 + cargoCount * 30;
           } else {
@@ -309,8 +309,8 @@ const AI_STRATEGIES = {
     {
       getTargetBonus(target, player, state) {
         if (target === 6 && player.guildLv < 3) {
-          const reqP = player.guildLv === 1 ? 1 : 2;
-          const reqK = player.guildLv === 1 ? 1 : 2;
+          const reqP = player.guildLv === 1 ? 2 : 3;
+          const reqK = player.guildLv === 1 ? 2 : 3;
           const availablePorter = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.porter : 0), 0);
           const availablePack = player.boxes.reduce((s, b) => s + (b.cargo ? b.cargo.pack : 0), 0);
           if (availablePorter >= reqP && availablePack >= reqK) return 185; // 会所強化可能なら最優先！
@@ -354,13 +354,40 @@ const AI_STRATEGIES = {
           if (player.handLimitLv === 1 && availablePorter >= 3) return 110;
           if (player.boxesLv === 1 && availablePack >= 3) return 120;
         }
-        if (target === 6 && player.guildLv === 1 && availablePorter >= 1 && availablePack >= 1) {
+        if (target === 6 && player.guildLv === 1 && availablePorter >= 2 && availablePack >= 2) {
           return 115;
         }
         return 0;
       }
     }
-  )
+  ),
+
+  // 6. ランダム型 (Random Baseline)
+  random: {
+    name: 'ランダム型',
+    desc: '合法手から完全ランダムに選択するベースライン検証AI',
+    color: '#94a3b8',
+    weights: { salt: 1, porter: 1, pack: 1, tea: 1, rice: 1, cloth: 1 },
+    chooseMove(player, state) {
+      if (!player.hand || player.hand.length === 0) return 0;
+      return Math.floor(Math.random() * player.hand.length);
+    },
+    shouldReplenishRoad(player, state) {
+      const roadCards = state.road[player.pos] || [];
+      if (roadCards.length === 0) return false;
+      return Math.random() < 0.5;
+    },
+    chooseExcessReturns(player, excessCount) {
+      const hList = [...player.hand];
+      return hList.sort(() => Math.random() - 0.5).slice(0, excessCount).map(c => c.id);
+    },
+    decideCargoLoading(player, availableSets) {
+      const emptySlots = player.boxes.filter(b => b.unlocked && !b.cargo && b.salt === 0).length;
+      if (emptySlots === 0 || availableSets.length === 0) return [];
+      const shuffled = [...availableSets].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, emptySlots);
+    }
+  }
 };
 
 
@@ -469,7 +496,7 @@ function runSingleGame(botStrategies, config) {
     }
     // 港(4)
     else if (curr.pos === 4) {
-      const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 2 : 4;
+      const bonus = curr.guildLv === 1 ? 0 : curr.guildLv === 2 ? 3 : 6;
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
           const gain = b.cargo.salt + bonus;
@@ -517,8 +544,8 @@ function runSingleGame(botStrategies, config) {
     }
     // 会所(6)
     else if (curr.pos === 6 && curr.guildLv < 3) {
-      const reqP = curr.guildLv === 1 ? 1 : 2;
-      const reqK = curr.guildLv === 1 ? 1 : 2;
+      const reqP = curr.guildLv === 1 ? 2 : 3;
+      const reqK = curr.guildLv === 1 ? 2 : 3;
       const totalPorter = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.porter : 0), 0);
       const totalPack = bxs.reduce((sum, b) => sum + (b.cargo ? b.cargo.pack : 0), 0);
       if (totalPorter >= reqP && totalPack >= reqK) {
@@ -717,6 +744,7 @@ function applyPreset(presetKey) {
     four_builds: ['hand_limit', 'cargo_boxes', 'guild_bonus', 'tea_rush'],
     hand_vs_rush: ['hand_limit', 'tea_rush', 'hand_limit', 'tea_rush'],
     boxes_vs_guild: ['cargo_boxes', 'guild_bonus', 'cargo_boxes', 'guild_bonus'],
+    smart_vs_random: ['adaptive', 'random', 'random', 'random'],
     all_adaptive: ['adaptive', 'adaptive', 'adaptive', 'adaptive']
   };
 
