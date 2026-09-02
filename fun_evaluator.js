@@ -24,7 +24,7 @@ const CARD_TEMPLATES = {
 const HAND_LIMIT  = 5;
 const WIN_SCORE   = 20;
 const BOX_COSTS   = [1, 2, 3];
-const FLIP_COST   = 3;
+const FLIP_COST   = 2;
 const WOOD_BONUS  = 0;
 const FLIP_BONUS  = 3;
 const BOX_TILES   = [1, 7];
@@ -521,8 +521,8 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       tracking.portVisits[state.turn]++;
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
-          // 木箱: 素点そのまま / 高級箱(裏返し): 素点の倍！
-          const gain = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
+          // 木箱: 素点そのまま / 高級箱(裏返し): 素点 + FLIP_BONUS！
+          const gain = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
           if (b.cargo.cards) state.discard.push(...b.cargo.cards);
           return { ...b, cargo: null, salt: gain };
         }
@@ -543,27 +543,31 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
           }
           return b;
         });
-        bxs[unflippedIdx].flipped = true;
+        bxs[unflippedIdx] = { ...bxs[unflippedIdx], flipped: true };
       }
     } else if (BOX_TILES.includes(curr.pos)) {
-      const lockedIdx = bxs.findIndex(b => !b.unlocked);
-      const curUnlockedCount = bxs.filter(b => b.unlocked).length;
-      if (lockedIdx !== -1 && curUnlockedCount < 4 && curr.strat.shouldBuyBox(curr)) {
-        const cost = BOX_COSTS[curUnlockedCount - 1];
+      const unlockedCount = bxs.filter(b => b.unlocked).length;
+      if (unlockedCount < 4) {
+        const nextCost = BOX_COSTS[unlockedCount - 1];
         const curTot = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;
-        if (curTot >= cost) {
-          tracking.facilitySpendings[state.turn] += cost;
-          let needed = cost;
-          if (curr.pouchSalt >= needed) { curr.pouchSalt -= needed; needed = 0; }
-          else { needed -= curr.pouchSalt; curr.pouchSalt = 0; }
-          bxs = bxs.map(b => {
-            if (needed > 0 && b.unlocked && b.salt > 0) {
-              if (b.salt >= needed) { const rem = b.salt - needed; needed = 0; return { ...b, salt: rem }; }
-              else { needed -= b.salt; return { ...b, salt: 0 }; }
-            }
-            return b;
-          });
-          bxs[lockedIdx].unlocked = true;
+        const wantsBox = curr.strat.shouldBuyBox ? curr.strat.shouldBuyBox(curr) : true;
+        if (curTot >= nextCost && wantsBox) {
+          tracking.facilitySpendings[state.turn] += nextCost;
+          const target = bxs.find(b => !b.unlocked);
+          if (target) {
+            target.unlocked = true;
+            let needed = nextCost;
+            if (curr.pouchSalt >= needed) { curr.pouchSalt -= needed; needed = 0; }
+            else { needed -= curr.pouchSalt; curr.pouchSalt = 0; }
+            bxs = bxs.map(b => {
+              if (needed > 0 && b.unlocked && b.salt > 0) {
+                if (b.salt >= needed) { const rem = b.salt - needed; needed = 0; return { ...b, salt: rem }; }
+                needed -= b.salt;
+                return { ...b, salt: 0 };
+              }
+              return b;
+            });
+          }
         }
       }
     } else if (REFILL_TILES.includes(curr.pos)) {
@@ -608,14 +612,20 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
     }
     tracking.lastLeader = currentLeader;
 
-    if (curr.score >= WIN_SCORE) {
+    if (curr.score >= WIN_SCORE && !state.finalRoundTriggered) {
+      state.finalRoundTriggered = true;
+    }
+
+    // 最終ラウンド制: ラウンドの最後(P4の手番後)まで回す
+    const nextTurn = (state.turn + 1) % 4;
+    if (state.finalRoundTriggered && nextTurn === 0) {
       state.gameOver = true;
-      state.winner = curr;
-      state.winners = [curr];
+      state.winners = state.players.filter(player => player.score === Math.max(...state.players.map(p => p.score)));
+      state.winner = state.winners[0];
       break;
     }
 
-    state.turn = (state.turn + 1) % 4;
+    state.turn = nextTurn;
     turns++;
   }
 

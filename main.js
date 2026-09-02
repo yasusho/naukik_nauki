@@ -36,13 +36,13 @@ const TILES = [
   { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品・手当', costText: '箱数手当+納品' },
   { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
   { pos: 2, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
-  { pos: 3, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 3塩' },
+  { pos: 3, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 4, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 5, name: '港',   icon: '⚓', isFacility: true, short: '換金', costText: '木箱:素点 / 高級箱:2倍！' },
+  { pos: 5, name: '港',   icon: '⚓', isFacility: true, short: '換金', costText: '木箱:素点 / 高級箱:素点+3塩🔥' },
   { pos: 6, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 7, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
   { pos: 8, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
-  { pos: 9, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 3塩' },
+  { pos: 9, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
 ];
 
 const PLAYERS_DEF = [
@@ -55,7 +55,8 @@ const PLAYERS_DEF = [
 const HAND_LIMIT = 5;          // 手札5枚固定
 const WIN_SCORE = 20;          // 目標20点 (充実の2〜3周回エンジンビルド！)
 const BOX_COSTS = [1, 2, 3];   // 2箱目: 1塩, 3箱目: 2塩, 4箱目: 3塩 (初期1箱所持)
-const FLIP_COST = 3;           // 高級箱化コスト: 3塩
+const FLIP_COST = 2;           // 高級箱化コスト: 2塩
+const FLIP_BONUS = 3;          // 高級箱出荷ボーナス: 素点 + 3塩
 const REFILL_TILES = [2, 8];   // 仕入れ所: 補充上限を強化
 const REFILL_COST = 2;         // 補充上限+1のコスト
 const MAX_REFILL = 3;          // 補充上限は最大3枚
@@ -443,13 +444,13 @@ function App() {
       players: prev.players.map((pl, i) => i === 0 ? { ...pl, hand: newHand, boxes: newBoxes } : pl)
     }));
   };
-  // 港で特定の荷箱だけ荷下ろし (木箱=素点, 高級箱=素点の2倍！)
+  // 港で特定の荷箱だけ荷下ろし (木箱=素点, 高級箱=素点+3塩！)
   const handlePortSellBox = (boxIdx) => {
     if (!isHuman || state.step !== 3 || p.pos !== 5) return;
     const box = me.boxes[boxIdx];
     if (!box || !box.cargo) return;
 
-    const gain = box.flipped ? (box.cargo.salt * 2) : box.cargo.salt;
+    const gain = box.flipped ? (box.cargo.salt + FLIP_BONUS) : box.cargo.salt;
     const returnedCards = box.cargo.cards || [];
 
     const newBoxes = me.boxes.map((b, idx) => {
@@ -464,14 +465,14 @@ function App() {
     }));
   };
 
-  // 港ですべての荷物を一括荷下ろし (木箱=素点, 高級箱=素点の2倍！)
+  // 港ですべての荷物を一括荷下ろし (木箱=素点, 高級箱=素点+3塩！)
   const handlePortSellAll = () => {
     if (!isHuman || state.step !== 3 || p.pos !== 5) return;
     let cardsToDiscard = [];
 
     const newBoxes = me.boxes.map(b => {
       if (b.unlocked && b.cargo) {
-        const gain = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
+        const gain = b.flipped ? (b.cargo.salt + FLIP_BONUS) : b.cargo.salt;
         if (b.cargo.cards) cardsToDiscard.push(...b.cargo.cards);
         return { ...b, cargo: null, salt: gain };
       }
@@ -510,11 +511,10 @@ function App() {
     if (!isHuman || state.step !== 3 || p.pos !== 0 || myTotalSalt <= 0) return;
     const newScore = me.score + myTotalSalt;
     const newBoxes = me.boxes.map(b => ({ ...b, salt: 0 }));
-    const reachedGoal = newScore >= WIN_SCORE;
 
     setState(prev => ({
       ...prev,
-      gameOver: reachedGoal,
+      finalRoundTriggered: prev.finalRoundTriggered || newScore >= WIN_SCORE,
       players: prev.players.map((pl, i) => i === 0 ? {
         ...pl,
         score: newScore,
@@ -608,7 +608,8 @@ function App() {
     setState(prev => ({
       ...prev,
       turn: (prev.turn + 1) % 4,
-      step: 1
+      step: 1,
+      gameOver: prev.finalRoundTriggered && prev.turn === 3
     }));
   };
 
@@ -805,10 +806,10 @@ function App() {
             return b;
           });
         } else if (nextPos === 5) {
-          // 港 (5): 荷箱の荷下ろし (木箱=素点そのまま, 高級箱=素点の2倍！)
+          // 港 (5): 荷箱の荷下ろし (木箱=素点そのまま, 高級箱=素点+3塩！)
           bxs = bxs.map(b => {
             if (b.unlocked && b.cargo) {
-              const gain = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
+              const gain = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
               if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
               return { ...b, cargo: null, salt: gain };
             }
@@ -834,7 +835,7 @@ function App() {
             }
           }
         } else if (nextPos === 1 || nextPos === 7) {
-          // 箱屋 (1, 7): 箱増設 (1〜2塩)
+          // 箱屋 (1, 7): 箱増設 (1〜3塩)
           const uCount = bxs.filter(b => b.unlocked).length;
           if (uCount < 4) {
             const nextCost = BOX_COSTS[uCount - 1];
@@ -886,6 +887,8 @@ function App() {
         }
 
         const reachedGoal = sc >= WIN_SCORE;
+        const finalRoundTriggered = state.finalRoundTriggered || reachedGoal;
+        const isRoundComplete = finalRoundTriggered && state.turn === 3;
         const newPlayers = state.players.map((pl, i) => i === state.turn ? {
           ...pl,
           pos: nextPos,
@@ -902,9 +905,10 @@ function App() {
           discard: newDiscard,
           road: newRoad,
           players: newPlayers,
-          turn: reachedGoal ? prev.turn : (prev.turn + 1) % 4,
+          finalRoundTriggered,
+          turn: isRoundComplete ? prev.turn : (prev.turn + 1) % 4,
           step: 1,
-          gameOver: reachedGoal
+          gameOver: isRoundComplete
         }));
       }
     }, 450);
@@ -1344,7 +1348,7 @@ function App() {
           if (b.cargo) {
             const isPort = (isHuman && state.step === 3 && p.pos === 5);
             const isHome = (isHuman && state.step === 3 && p.pos === 0);
-            const salePrice = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
+            const salePrice = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
 
             return h('div', {
               key: idx,
@@ -1363,14 +1367,14 @@ function App() {
               h('div', { className: 'cargo-box-name', style: { fontWeight: 'bold', color: '#0f172a' } }, b.cargo.name),
               h('div', { className: 'cargo-box-vals', style: { display: 'flex', gap: '4px' } }, [
                 h('span', { className: 'cargo-val-pill', style: { background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontSize: '10px' } }, `🧂素点 ${b.cargo.salt}塩`),
-                b.flipped && h('span', { className: 'cargo-val-pill', style: { background: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' } }, `高級箱2倍🔥 ➔ 計${salePrice}塩`)
+                b.flipped && h('span', { className: 'cargo-val-pill', style: { background: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' } }, `高級箱+3🔥 ➔ 計${salePrice}塩`)
               ]),
               isPort ? (
                 h('button', {
                   onClick: (e) => { e.stopPropagation(); handlePortSellBox(idx); },
                   className: 'btn btn-primary',
                   style: { marginTop: '3px', fontSize: '9px', padding: '3px 4px', fontWeight: 'bold' }
-                }, `⚓ 荷下ろし ➔ 🧂${salePrice}塩${b.flipped ? ' (2倍🔥)' : ''}`)
+                }, `⚓ 荷下ろし ➔ 🧂${salePrice}塩${b.flipped ? ' (+3🔥)' : ''}`)
               ) : isHome ? (
                 h('div', { style: { fontSize: '9px', color: '#64748b' } }, '🏡 地元で箱を開けて手札に戻す')
               ) : (
