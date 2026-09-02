@@ -1,6 +1,6 @@
 /**
  * 『ナウキ運び』シミュレーター ダッシュボード Logic & Visualizer
- * （手札7枚固定 ＆ 荷箱3枠 ＆ 会所Lv3 2倍ロマンモデル）
+ * （裏表2段階タイル箱モデル ＆ 手札直売＋箱ストック売却）
  */
 
 // ====================================================
@@ -31,14 +31,25 @@ const CARD_TEMPLATES = {
   ]
 };
 
-const HAND_LIMIT = 7;
+const HAND_LIMIT = 5;
+
+// マップ定義: 0: 地元, 1/7: 箱屋, 2/8: 仕入れ所, 3/9: 会所, 5: 港 (10マス)
+const BOX_TILES = [1, 7];
+const PORT_TILE = 5;
+const GUILD_TILES = [3, 9];
+const REFILL_TILES = [2, 8];
+const BOX_COSTS = [2, 3, 4];
+const REFILL_COST = 2;
+const MAX_REFILL = 3;
+
+const CARD_COPIES = 4;
 
 function createDeck() {
   const deck = [];
   let id = 1;
   ['tea', 'rice', 'cloth'].forEach(t => {
     CARD_TEMPLATES[t].forEach(tpl => {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < CARD_COPIES; i++) {
         deck.push({ id: id++, type: t, num: tpl.num, salt: tpl.salt });
       }
     });
@@ -46,9 +57,10 @@ function createDeck() {
   return deck.sort(() => Math.random() - 0.5);
 }
 
-function drawSafe(count, currentDeck, currentDiscard) {
+function drawSafe(count, currentDeck, currentDiscard, road = null, excludePositions = []) {
   let d = [...currentDeck];
   let disc = [...currentDiscard];
+  let newRoad = road ? road.map(arr => [...arr]) : null;
   const drawn = [];
 
   for (let i = 0; i < count; i++) {
@@ -56,36 +68,64 @@ function drawSafe(count, currentDeck, currentDiscard) {
       if (disc.length > 0) {
         d = disc.sort(() => Math.random() - 0.5);
         disc = [];
+      } else if (newRoad) {
+        const recycled = [];
+        newRoad.forEach((arr, pos) => {
+          if (!excludePositions.includes(pos) && arr.length > 0) {
+            recycled.push(...arr);
+            newRoad[pos] = [];
+          }
+        });
+        if (recycled.length > 0) {
+          d = recycled.sort(() => Math.random() - 0.5);
+        } else {
+          break;
+        }
       } else {
         break;
       }
     }
     if (d.length > 0) drawn.push(d.shift());
   }
-  return { drawn, newDeck: d, newDiscard: disc };
+  return { drawn, newDeck: d, newDiscard: disc, newRoad: newRoad || road };
 }
 
-// 単純合計（ボーナスなし）
-function evalSet(cards, tripletBonus = 0) {
-  if (!cards || cards.length !== 3) return null;
-  const t = cards[0].type;
-  if (!cards.every(c => c.type === t)) return null;
+function getPlayerTotalSalt(player) {
+  if (!player) return 0;
+  const boxSalt = (player.boxes || []).reduce((sum, box) => sum + (box.unlocked ? (box.salt || 0) : 0), 0);
+  return boxSalt + (player.pouchSalt || 0);
+}
 
+function evalSet(cards) {
+  if (!cards || cards.length !== 3) return null;
+  const types = cards.map(c => c.type);
   const nums = cards.map(c => c.num).sort((a, b) => a - b);
   const baseSalt = cards.reduce((s, c) => s + c.salt, 0);
 
-  // 同数3枚（刻子）
+  // ① 同色判定
+  if (types[0] === types[1] && types[1] === types[2]) {
+    const t = types[0];
+    if (nums[0] === nums[1] && nums[1] === nums[2]) {
+      return { name: `${t} ${nums[0]}×3 (刻子)`, salt: baseSalt, isTriplet: true, cards, type: t };
+    }
+    if (nums[0] + 1 === nums[1] && nums[1] + 1 === nums[2]) {
+      return { name: `${t} ${nums[0]}-${nums[2]} (順子)`, salt: baseSalt, isTriplet: false, cards, type: t };
+    }
+    return null;
+  }
+
+  // ② 三色同刻
   if (nums[0] === nums[1] && nums[1] === nums[2]) {
-    return { name: `${t} ${nums[0]}×3 (刻子)`, salt: baseSalt + tripletBonus, isTriplet: true, cards, type: t };
+    const uniqueTypes = new Set(types);
+    if (uniqueTypes.size === 3) {
+      return { name: `三色 ${nums[0]}×3 (三色同刻)`, salt: baseSalt, isTriplet: true, cards, type: 'tri' };
+    }
   }
-  // 連続3枚（順子）
-  if (nums[0] + 1 === nums[1] && nums[1] + 1 === nums[2]) {
-    return { name: `${t} ${nums[0]}-${nums[2]} (順子)`, salt: baseSalt, isTriplet: false, cards, type: t };
-  }
+
   return null;
 }
 
-function findSets(hand, tripletBonus = 0) {
+function findSets(hand) {
   const list = [];
   if (!hand || hand.length < 3) return list;
   const n = hand.length;
@@ -95,7 +135,7 @@ function findSets(hand, tripletBonus = 0) {
     for (let j = i + 1; j < n - 1; j++) {
       for (let k = j + 1; k < n; k++) {
         const trio = [hand[i], hand[j], hand[k]];
-        const r = evalSet(trio, tripletBonus);
+        const r = evalSet(trio);
         if (r) {
           const numsKey = trio.map(c => c.num).sort((a, b) => a - b).join(',');
           const patternKey = `${r.type}:${numsKey}:s${r.salt}`;
@@ -111,26 +151,17 @@ function findSets(hand, tripletBonus = 0) {
   return list;
 }
 
-function calcPortSaleDynamic(cargoSalt, guildLv, config) {
-  if (guildLv === 1) return cargoSalt;
-  if (guildLv === 2) return cargoSalt + (config.guildBonusLv2 || 2);
-  if (config.guildLv3Mode === 'double') return cargoSalt * 2;
-  if (config.guildLv3Mode === 'flat6') return cargoSalt + 6;
-  return cargoSalt + 4; // default flat4
-}
-
-function evaluateHandValue(hand, weights = { salt: 10, tea: 1, rice: 1, cloth: 1 }, tripletBonus = 0) {
+function evaluateHandValue(hand, weights = { salt: 15, tea: 1.2, rice: 1.2, cloth: 1.2 }) {
   if (!hand || hand.length === 0) return 0;
-  const sets = findSets(hand, tripletBonus);
+  const sets = findSets(hand);
   let value = 0;
   const usedCardIds = new Set();
-
   sets.forEach(s => {
     const ids = s.trio.map(c => c.id);
     if (!ids.some(id => usedCardIds.has(id))) {
       ids.forEach(id => usedCardIds.add(id));
-      const typeBonus = (weights[s.info.type] || 1) * 15;
-      value += 100 + typeBonus + s.info.salt * weights.salt;
+      const typeWeight = weights[s.info.type] || 1.0;
+      value += 100 + s.info.salt * weights.salt * typeWeight;
     }
   });
 
@@ -139,99 +170,92 @@ function evaluateHandValue(hand, weights = { salt: 10, tea: 1, rice: 1, cloth: 1
   remainingCards.forEach(c => byType[c.type].push(c));
 
   Object.keys(byType).forEach(t => {
-    const list = byType[t].sort((a, b) => a.num - b.num);
-    const pref = (weights[t] || 1);
+    const list = byType[t].sort((a, b) => a - b);
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
         const diff = Math.abs(list[i].num - list[j].num);
-        if (diff === 0) value += 25 * pref;
-        else if (diff === 1) value += ((list[i].num === 1 || list[j].num === 5) ? 20 : 25) * pref;
-        else if (diff === 2) value += 15 * pref;
+        if (diff === 0) {
+          value += 25 * (weights[t] || 1.0);
+        } else if (diff === 1) {
+          value += (list[i].num === 1 || list[j].num === 5 ? 20 : 25) * (weights[t] || 1.0);
+        } else if (diff === 2) {
+          value += 15 * (weights[t] || 1.0);
+        }
       }
     }
   });
   return value;
 }
 
-function getCardDiscardPriorities(hand, weights, tripletBonus = 0) {
+function getCardDiscardPriorities(hand, weights) {
   if (!hand || hand.length === 0) return [];
-  const baseValue = evaluateHandValue(hand, weights, tripletBonus);
+  const baseValue = evaluateHandValue(hand, weights);
   return hand.map((c, idx) => {
     const withoutC = hand.filter((_, i) => i !== idx);
-    const valAfter = evaluateHandValue(withoutC, weights, tripletBonus);
+    const valAfter = evaluateHandValue(withoutC, weights);
     const loss = baseValue - valAfter;
     return { card: c, idx, loss };
   }).sort((a, b) => a.loss - b.loss);
 }
 
-
 // ====================================================
-// 2. 戦略ボット定義
+// 2. AI 戦略定義
 // ====================================================
 
-function createBaseStrategy(name, desc, color, weights, behavior) {
+function createBaseStrategy(name, desc, color, weights, options = {}) {
   return {
     name,
     desc,
     color,
     weights,
     chooseMove(player, state, config) {
-      const hList = player.hand;
-      if (!hList || hList.length === 0) return 0;
-
-      const tripletBonus = config ? config.tripletBonus : 0;
-      const winScore = config ? config.winScore : 20;
-      const priorities = getCardDiscardPriorities(hList, weights, tripletBonus);
-      const totalSalt = player.boxes.reduce((s, b) => s + (b.salt || 0), 0);
-      const hasSalt = totalSalt > 0;
-      const hasCargo = player.boxes.some(b => b.cargo);
-      const cargoCount = player.boxes.filter(b => b.cargo).length;
+      if (!player.hand || player.hand.length === 0) return 0;
+      const priorities = getCardDiscardPriorities(player.hand, weights);
+      const loadedBoxes = player.boxes.filter(b => b.unlocked && b.cargo).length;
+      const emptyBoxes = player.boxes.filter(b => b.unlocked && !b.cargo && (b.salt || 0) === 0).length;
+      const handSets = findSets(player.hand).length;
+      const totalSalt = getPlayerTotalSalt(player);
 
       let bestScore = -99999;
       let bestIdx = 0;
 
-      hList.forEach((c, idx) => {
-        const target = (player.pos + c.num) % 8;
+      player.hand.forEach((c, idx) => {
+        const target = (player.pos + c.num) % 10;
         let score = 0;
 
         const pInfo = priorities.find(p => p.idx === idx);
-        const discardEfficiency = 100 - (pInfo ? pInfo.loss : 50);
-        score += discardEfficiency * 0.9;
+        score += (100 - (pInfo ? pInfo.loss : 50)) * 0.9;
+
+        const handAfterMove = player.hand.filter((_, handIdx) => handIdx !== idx);
+        const setsAfterMove = findSets(handAfterMove).length;
+        if (setsAfterMove > 0 && emptyBoxes > 0) score += setsAfterMove * 120;
+        if (setsAfterMove > 0 && emptyBoxes > 1) score += 60;
 
         if (target === 0) {
-          if (hasSalt) {
-            score += 180 + totalSalt * 25;
-            if (player.score + totalSalt >= winScore) score += 2000;
-          } else {
-            score -= 20;
-          }
-        } else if (target === 4) {
-          if (hasCargo) {
-            const expectedSalt = player.boxes.reduce((s, b) => s + (b.cargo ? calcPortSaleDynamic(b.cargo.salt, player.guildLv, config) : 0), 0);
-            score += 160 + expectedSalt * 15 + cargoCount * 20;
-          } else {
-            score -= 25;
-          }
+          if (totalSalt > 0) score += 180 + totalSalt * 25;
+          else score -= 20;
+        } else if (target === PORT_TILE) {
+          const canSell = loadedBoxes + handSets;
+          if (canSell > 0) score += 180 + canSell * 35;
+          else score -= 40;
         }
 
-        if (behavior.getTargetBonus) {
-          score += behavior.getTargetBonus(target, player, state, config);
+        if (options.getTargetBonus) {
+          score += options.getTargetBonus(target, player, state, config);
         }
 
         const roadStack = state.road[target] || [];
         if (roadStack.length > 0) {
-          const handWithRoad = [...hList.filter((_, i) => i !== idx), ...roadStack];
-          const gain = evaluateHandValue(handWithRoad, weights, tripletBonus) - evaluateHandValue(hList, weights, tripletBonus);
-          score += roadStack.length * 8 + Math.max(0, gain) * 0.4;
+          score += roadStack.length * (emptyBoxes > 0 ? 25 : 6);
         }
 
-        if (hasCargo && !hasSalt) {
-          const distToPort = (4 - target + 8) % 8;
-          score += (8 - distToPort) * 8;
+        if ((loadedBoxes > 0 || handSets > 0) && totalSalt === 0) {
+          const distToPort = (PORT_TILE - target + 10) % 10;
+          score += (10 - distToPort) * 8;
         }
-        if (hasSalt) {
-          const distToHome = (8 - target) % 8;
-          score += (8 - distToHome) * 12;
+        if (totalSalt > 0) {
+          const distToHome = (10 - target) % 10;
+          score += (10 - distToHome) * 12;
         }
 
         if (score > bestScore) {
@@ -243,96 +267,86 @@ function createBaseStrategy(name, desc, color, weights, behavior) {
       return bestIdx;
     },
 
-    shouldReplenishRoad(player, state, config) {
-      const tripletBonus = config ? config.tripletBonus : 0;
-      const roadStack = state.road[player.pos] || [];
-      if (roadStack.length === 0) return false;
-      const currentVal = evaluateHandValue(player.hand, weights, tripletBonus);
-      const withRoadVal = evaluateHandValue([...player.hand, ...roadStack], weights, tripletBonus);
-      const setsBefore = findSets(player.hand, tripletBonus).length;
-      const setsAfter = findSets([...player.hand, ...roadStack], tripletBonus).length;
-
-      if (setsAfter > setsBefore) return true;
-      if (roadStack.length >= 2 && withRoadVal > currentVal) return true;
-      if (roadStack.length >= 3) return true;
-      return false;
+    shouldReplenishRoad(player, state) {
+      const roadCards = state.road[player.pos] || [];
+      if (roadCards.length === 0) return false;
+      const emptyBoxes = player.boxes.filter(b => b.unlocked && !b.cargo).length;
+      return emptyBoxes > 0 || roadCards.length >= 2 || player.hand.length < 3;
     },
 
-    chooseExcessReturns(player, excessCount, config) {
-      const tripletBonus = config ? config.tripletBonus : 0;
-      const priorities = getCardDiscardPriorities(player.hand, weights, tripletBonus);
+    chooseExcessReturns(player, excessCount) {
+      const priorities = getCardDiscardPriorities(player.hand, weights);
       return priorities.slice(0, excessCount).map(p => p.card.id);
-    }
+    },
+
+    ...options
   };
 }
 
 const AI_STRATEGIES = {
-  cargo_boxes: createBaseStrategy(
-    '荷箱特化型',
-    '港で換金した塩を箱屋に支払い、荷箱枠を拡張。一度に大量のセットを運ぶ。',
-    '#a78bfa',
-    { salt: 10, tea: 1.0, rice: 1.0, cloth: 1.5 },
+  adaptive: createBaseStrategy(
+    '状況適応型',
+    '既存の箱を特製箱に裏返して収入基盤を固めた後、2箱目を増設して大量輸送を狙う賢い王道スタイル。',
+    '#38bdf8',
+    { salt: 15, tea: 1.2, rice: 1.2, cloth: 1.2 },
     {
+      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
+      getTargetBonus(target, player) {
+        const unflipped = player.boxes.find(b => b.unlocked && !b.flipped);
+        const hasFlipped = player.boxes.some(b => b.unlocked && b.flipped);
+        const unlockedCount = player.boxes.filter(b => b.unlocked).length;
+        const totalSalt = getPlayerTotalSalt(player);
+        if (GUILD_TILES.includes(target) && unflipped && totalSalt >= 3) return 380;
+        if (BOX_TILES.includes(target) && unlockedCount < 4 && totalSalt >= 2 && (hasFlipped || totalSalt >= 5)) return 340;
+        return 0;
+      },
+      decideHomeKeep(player) {
+        const unflipped = player.boxes.some(b => b.unlocked && !b.flipped);
+        if (unflipped && getPlayerTotalSalt(player) >= 3 && player.score < 14) return 3;
+        return 0;
+      }
+    }
+  ),
+
+  cargo_boxes: createBaseStrategy(
+    '箱増設型',
+    '箱屋(1, 7)で荷箱を4枠まで最速で増設し、大量の荷物をストックして一網打尽に運ぶビルド。',
+    '#a78bfa',
+    { salt: 14, tea: 1.0, rice: 1.0, cloth: 1.5 },
+    {
+      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
       getTargetBonus(target, player, state, config) {
-        if (target === 2 && player.boxesLv < 3) {
-          const totalSalt = player.boxes.reduce((s, b) => s + (b.salt || 0), 0);
-          const boxCosts = config ? config.boxCosts : [3, 5];
-          const cost = boxCosts[player.boxesLv - 1];
-          if (totalSalt >= cost) return 190;
-          return 60;
-        }
+        const unlockedCount = player.boxes.filter(b => b.unlocked).length;
+        const costs = (config && config.boxCosts) || BOX_COSTS;
+        if (BOX_TILES.includes(target) && unlockedCount < 4 && getPlayerTotalSalt(player) >= (costs[unlockedCount - 1] || 2)) return 360;
         return 0;
       }
     }
   ),
 
   guild_bonus: createBaseStrategy(
-    '会所特化型',
-    '港で換金した塩を会所に支払い、港売却レートを最大化（Lv3で2倍！）する。',
+    '箱裏返し型',
+    '会所(3, 9)で木箱を特製桐箱に裏返し、売却ボーナス(+2塩)を最大限に活かす品質特化ビルド。',
     '#34d399',
-    { salt: 12, tea: 1.0, rice: 1.2, cloth: 1.2 },
+    { salt: 16, tea: 1.0, rice: 1.2, cloth: 1.2 },
     {
-      getTargetBonus(target, player, state, config) {
-        if (target === 6 && player.guildLv < 3) {
-          const guildCosts = config ? config.guildCosts : [4, 7];
-          const cost = guildCosts[player.guildLv - 1];
-          const totalSalt = player.boxes.reduce((s, b) => s + (b.salt || 0), 0);
-          if (totalSalt >= cost) return 195;
-          return 55;
-        }
+      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
+      getTargetBonus(target, player) {
+        const unflipped = player.boxes.find(b => b.unlocked && !b.flipped);
+        if (GUILD_TILES.includes(target) && unflipped && getPlayerTotalSalt(player) >= 3) return 380;
         return 0;
       }
     }
   ),
 
   tea_rush: createBaseStrategy(
-    '直行速攻型',
-    '施設強化を抑え、港での換金→地元での得点化を高回転周回。',
+    '手札直売型',
+    '箱の強化・増設を行わず、手札の完成セットだけで港へ直行・ピストン輸送する速攻型。',
     '#fbbf24',
-    { salt: 20, tea: 1.5, rice: 1.0, cloth: 1.0 },
+    { salt: 22, tea: 1.5, rice: 1.0, cloth: 1.0 },
     {
-      getTargetBonus(target, player, state) {
-        const hasCargo = player.boxes.some(b => b.cargo);
-        const hasSalt = player.boxes.some(b => b.salt > 0);
-        if (target === 4 && hasCargo) return 140;
-        if (target === 0 && hasSalt) return 150;
-        return 0;
-      }
-    }
-  ),
-
-  adaptive: createBaseStrategy(
-    '状況適応型',
-    '手札の配牌や盤面状況に合わせて最適な荷箱拡張・会所強化・得点化を選択する総合AI',
-    '#f43f5e',
-    { salt: 12, tea: 1.2, rice: 1.2, cloth: 1.2 },
-    {
-      getTargetBonus(target, player, state, config) {
-        const totalSalt = player.boxes.reduce((s, b) => s + (b.salt || 0), 0);
-        const boxCosts = config ? config.boxCosts : [3, 5];
-        const guildCosts = config ? config.guildCosts : [4, 7];
-        if (target === 2 && player.boxesLv < 3 && totalSalt >= boxCosts[player.boxesLv - 1]) return 140;
-        if (target === 6 && player.guildLv < 3 && totalSalt >= guildCosts[player.guildLv - 1]) return 145;
+      shouldUpgradeRefill() { return false; },
+      getTargetBonus() {
         return 0;
       }
     }
@@ -340,200 +354,273 @@ const AI_STRATEGIES = {
 
   random: {
     name: 'ランダム型',
-    desc: '合法手から完全ランダムに選択するベースライン検証AI',
+    desc: '完全ランダムに選択するベースライン検証AI',
     color: '#94a3b8',
     weights: { salt: 1, tea: 1, rice: 1, cloth: 1 },
-    chooseMove(player, state) {
+    chooseMove(player) {
       if (!player.hand || player.hand.length === 0) return 0;
       return Math.floor(Math.random() * player.hand.length);
     },
     shouldReplenishRoad(player, state) {
       const roadCards = state.road[player.pos] || [];
-      if (roadCards.length === 0) return false;
-      return Math.random() < 0.5;
+      return roadCards.length > 0 && Math.random() < 0.5;
     },
     chooseExcessReturns(player, excessCount) {
       const hList = [...player.hand];
       return hList.sort(() => Math.random() - 0.5).slice(0, excessCount).map(c => c.id);
-    },
-    decideCargoLoading(player, availableSets) {
-      const emptySlots = player.boxes.filter(b => b.unlocked && !b.cargo && b.salt === 0).length;
-      if (emptySlots === 0 || availableSets.length === 0) return [];
-      const shuffled = [...availableSets].sort(() => Math.random() - 0.5);
-      return shuffled.slice(0, emptySlots);
     }
   }
 };
-
 
 // ====================================================
 // 3. 1ゲームシミュレーション実行エンジン
 // ====================================================
 
 function runSingleGame(botStrategies, config) {
+  const boxCosts = (config && config.boxCosts) || BOX_COSTS;
   const d = createDeck();
-  const players = botStrategies.map((bot, i) => ({
+  const safeBots = (botStrategies || []).map(b => b || AI_STRATEGIES.adaptive);
+  const players = safeBots.map((bot, i) => ({
     id: i,
     name: `P${i + 1}`,
     strategy: bot,
     pos: 0,
     hand: d.splice(0, HAND_LIMIT),
     boxes: [
-      { unlocked: true, cargo: null, salt: 0 },
-      { unlocked: false, cargo: null, salt: 0 },
-      { unlocked: false, cargo: null, salt: 0 }
+      { unlocked: true, flipped: false, cargo: null, salt: 0 },
+      { unlocked: false, flipped: false, cargo: null, salt: 0 },
+      { unlocked: false, flipped: false, cargo: null, salt: 0 },
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }
     ],
-    boxesLv: 1,
-    guildLv: 1,
-    score: 0
+    salt: 0,
+    pouchSalt: 0,
+    score: 0,
+    refillLimit: 1
   }));
 
-  const road = Array(8).fill(null).map(() => [d.shift()]);
-  let state = {
+  const road = Array(10).fill(null).map(() => [d.shift()]);
+  const state = {
     deck: d,
     discard: [],
     road,
     players,
     turn: 0,
-    gameOver: false
+    gameOver: false,
+    finalRoundTriggered: false
   };
+
+  function packToBoxes(curr) {
+    while (true) {
+      const sets = findSets(curr.hand);
+      const emptyBox = curr.boxes.find(b => b.unlocked && !b.cargo && (b.salt || 0) === 0);
+      if (sets.length > 0 && emptyBox) {
+        const s = sets[0];
+        emptyBox.cargo = { ...s.info, cards: s.trio };
+        const usedIds = s.trio.map(c => c.id);
+        curr.hand = curr.hand.filter(c => !usedIds.includes(c.id));
+        const allPos = state.players.map(p => p.pos);
+        const drawRes = drawSafe(3, state.deck, state.discard, state.road, allPos);
+        curr.hand.push(...drawRes.drawn);
+        state.deck = drawRes.newDeck;
+        state.discard = drawRes.newDiscard;
+      } else break;
+    }
+  }
 
   let totalRounds = 0;
   const maxRounds = 120;
 
   while (!state.gameOver && totalRounds < maxRounds) {
     const curr = state.players[state.turn];
-    const bot = curr.strategy;
+    const bot = curr.strategy || AI_STRATEGIES.adaptive;
 
-    // 1. 移動 (Step 1)
     if (curr.hand.length === 0) {
-      const res = drawSafe(1, state.deck, state.discard);
+      const allPos = state.players.map(p => p.pos);
+      const res = drawSafe(1, state.deck, state.discard, state.road, allPos);
       state.deck = res.newDeck;
       state.discard = res.newDiscard;
       const topCard = res.drawn[0] || { num: 1, type: 'tea', salt: 2 };
-      const nextPos = (curr.pos + topCard.num) % 8;
+      const nextPos = (curr.pos + topCard.num) % 10;
       state.road[curr.pos].push(topCard);
       curr.pos = nextPos;
     } else {
-      const moveIdx = bot.chooseMove(curr, state, config);
+      const moveIdx = (bot.chooseMove ? bot.chooseMove(curr, state, config) : 0) || 0;
       const chosenCard = curr.hand[moveIdx] || curr.hand[0];
-      const nextPos = (curr.pos + chosenCard.num) % 8;
+      const nextPos = (curr.pos + chosenCard.num) % 10;
       state.road[curr.pos].push(chosenCard);
       curr.hand = curr.hand.filter((_, i) => i !== moveIdx);
       curr.pos = nextPos;
     }
 
-    // 2. 補充 (Step 2)
-    const wantRoad = bot.shouldReplenishRoad(curr, state, config);
-    const roadCards = state.road[curr.pos] || [];
+    // 強化済み上限まで。1枚ごとに場札・山札を選び、役ができたら補充を止める。
+    let refillCount = 0;
+    while (refillCount < (curr.refillLimit || 1)) {
+      const roadCards = state.road[curr.pos] || [];
+      const fieldPick = roadCards.reduce((best, card) => {
+        const value = evaluateHandValue([...curr.hand, card], curr.strategy.weights);
+        return value > best.value ? { card, value } : best;
+      }, { card: null, value: -1 });
+      const emptyBoxSlots = curr.boxes.filter(b => b.unlocked && !b.cargo && (b.salt || 0) === 0).length;
+      if (refillCount > 0 && findSets(curr.hand).length >= Math.max(1, emptyBoxSlots)) break;
 
-    if (wantRoad && roadCards.length > 0) {
-      const combined = [...curr.hand, ...roadCards];
-      state.road[curr.pos] = [];
-
-      if (combined.length > HAND_LIMIT) {
-        const excessCount = combined.length - HAND_LIMIT;
-        curr.hand = combined;
-        const returnIds = bot.chooseExcessReturns(curr, excessCount, config);
-        const toReturn = curr.hand.filter(c => returnIds.includes(c.id));
-        curr.hand = curr.hand.filter(c => !returnIds.includes(c.id));
-        state.road[curr.pos] = toReturn;
+      const fieldCreatesSet = fieldPick.card && findSets([...curr.hand, fieldPick.card]).length > 0;
+      if (fieldPick.card && (fieldCreatesSet || roadCards.length >= 2)) {
+        curr.hand.push(fieldPick.card);
+        state.road[curr.pos] = roadCards.filter(card => card.id !== fieldPick.card.id);
       } else {
-        curr.hand = combined;
+        const allPos = state.players.map(p => p.pos);
+        const res = drawSafe(1, state.deck, state.discard, state.road, [...allPos, curr.pos]);
+        if (res.drawn.length === 0) break;
+        curr.hand.push(...res.drawn);
+        state.deck = res.newDeck;
+        state.discard = res.newDiscard;
+        state.road = res.newRoad || state.road;
       }
-    } else {
-      const needed = Math.max(0, HAND_LIMIT - curr.hand.length);
-      const res = drawSafe(needed, state.deck, state.discard);
-      curr.hand = [...curr.hand, ...res.drawn];
-      state.deck = res.newDeck;
-      state.discard = res.newDiscard;
+      refillCount++;
+    }
+    packToBoxes(curr);
+
+    // 手番の最後に手札を5枚以下へ整理し、余りは現在地へ戻す。
+    if (curr.hand.length > HAND_LIMIT) {
+      const excessCount = curr.hand.length - HAND_LIMIT;
+      const returnIds = bot.chooseExcessReturns(curr, excessCount, config);
+      const toReturn = curr.hand.filter(card => returnIds.includes(card.id));
+      curr.hand = curr.hand.filter(card => !returnIds.includes(card.id));
+      state.road[curr.pos].push(...toReturn);
     }
 
-    // 3. 行動（施設 & 荷積み）
-    let bxs = curr.boxes;
-    let sc = curr.score;
-    let newDiscard = state.discard;
+    const totalSalt = curr.boxes.reduce((sum, b) => sum + (b.salt || 0), 0) + (curr.pouchSalt || 0);
 
-    // 地元(0): 換金された塩を得点化
     if (curr.pos === 0) {
-      bxs = bxs.map(b => {
-        if (b.salt > 0) sc += b.salt;
-        return { ...b, cargo: null, salt: 0 };
-      });
-      if (sc >= config.winScore) {
-        state.gameOver = true;
-        curr.score = sc;
-        curr.boxes = bxs;
-        break;
+      let keep = 0;
+      if (bot.decideHomeKeep) keep = bot.decideHomeKeep(curr, config);
+      const deliver = Math.max(0, totalSalt - keep);
+      curr.score += deliver;
+      let needed = deliver;
+      if (curr.pouchSalt >= needed) {
+        curr.pouchSalt -= needed;
+        needed = 0;
+      } else {
+        needed -= curr.pouchSalt;
+        curr.pouchSalt = 0;
       }
-    }
-    // 港(4): セット売却・換金
-    else if (curr.pos === 4) {
-      bxs = bxs.map(b => {
-        if (b.unlocked && b.cargo) {
-          const gain = calcPortSaleDynamic(b.cargo.salt, curr.guildLv, config);
-          if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
-          return { ...b, cargo: null, salt: (b.salt || 0) + gain };
-        }
-        return b;
-      });
-    }
-    // 箱屋(2): 換金済み塩 3/5 を支払って荷箱拡張
-    else if (curr.pos === 2 && curr.boxesLv < 3) {
-      const cost = config.boxCosts[curr.boxesLv - 1];
-      let totalSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0);
-      if (totalSalt >= cost) {
-        let rem = cost;
-        bxs = bxs.map((b, idx) => {
-          let updated = { ...b };
-          if (idx === curr.boxesLv) updated.unlocked = true;
-          if (updated.salt > 0 && rem > 0) {
-            const spend = Math.min(updated.salt, rem);
-            rem -= spend;
-            updated.salt -= spend;
+      curr.boxes.forEach(b => {
+        if (needed > 0 && b.unlocked && b.salt > 0) {
+          if (b.salt >= needed) {
+            b.salt -= needed;
+            needed = 0;
+          } else {
+            needed -= b.salt;
+            b.salt = 0;
           }
-          return updated;
-        });
-        curr.boxesLv += 1;
+        }
+      });
+
+      if (curr.score >= config.winScore) state.finalRoundTriggered = true;
+    } else if (curr.pos === PORT_TILE) {
+      curr.boxes.forEach(b => {
+        if (b.unlocked && b.cargo) {
+          const bonus = b.flipped ? (config.flipBonus || 3) : 0;
+          b.salt = b.cargo.salt + bonus;
+          if (b.cargo.cards) state.discard.push(...b.cargo.cards);
+          b.cargo = null;
+        }
+      });
+
+      const hSets = findSets(curr.hand);
+      if (hSets.length > 0) {
+        const s = hSets[0];
+        state.discard.push(...s.trio);
+        const usedIds = s.trio.map(c => c.id);
+        curr.hand = curr.hand.filter(c => !usedIds.includes(c.id));
+        const allPos = state.players.map(p => p.pos);
+        const drawRes = drawSafe(3, state.deck, state.discard, state.road, allPos);
+        curr.hand.push(...drawRes.drawn);
+        state.deck = drawRes.newDeck;
+        state.discard = drawRes.newDiscard;
+        const emptyBox = curr.boxes.find(b => b.unlocked && !b.cargo && (b.salt || 0) === 0);
+        if (emptyBox) {
+          const bonus = emptyBox.flipped ? (config.flipBonus || 3) : 0;
+          emptyBox.salt = s.info.salt + bonus;
+        } else {
+          curr.pouchSalt = (curr.pouchSalt || 0) + s.info.salt;
+        }
       }
-    }
-    // 会所(6): 換金済み塩 4/7 を支払って強化
-    else if (curr.pos === 6 && curr.guildLv < 3) {
-      const cost = config.guildCosts[curr.guildLv - 1];
-      const totalSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0);
-      if (totalSalt >= cost) {
-        let rem = cost;
-        bxs = bxs.map(b => {
-          if (b.salt > 0 && rem > 0) {
-            const spend = Math.min(b.salt, rem);
-            rem -= spend;
-            return { ...b, salt: b.salt - spend };
+    } else if (GUILD_TILES.includes(curr.pos)) {
+      const unflipped = curr.boxes.find(b => b.unlocked && !b.flipped);
+      if (unflipped && totalSalt >= config.flipCost && bot.name !== '手札直売型') {
+        let needed = config.flipCost;
+        if (curr.pouchSalt >= needed) {
+          curr.pouchSalt -= needed;
+          needed = 0;
+        } else {
+          needed -= curr.pouchSalt;
+          curr.pouchSalt = 0;
+        }
+        curr.boxes.forEach(b => {
+          if (needed > 0 && b.unlocked && b.salt > 0) {
+            if (b.salt >= needed) {
+              b.salt -= needed;
+              needed = 0;
+            } else {
+              needed -= b.salt;
+              b.salt = 0;
+            }
+          }
+        });
+        unflipped.flipped = true;
+      }
+    } else if (BOX_TILES.includes(curr.pos)) {
+      const unlockedCount = curr.boxes.filter(b => b.unlocked).length;
+      const nextCost = boxCosts[unlockedCount - 1] || 2;
+      if (unlockedCount < 4 && totalSalt >= nextCost && bot.name !== '手札直売型') {
+        let needed = nextCost;
+        if (curr.pouchSalt >= needed) {
+          curr.pouchSalt -= needed;
+          needed = 0;
+        } else {
+          needed -= curr.pouchSalt;
+          curr.pouchSalt = 0;
+        }
+        curr.boxes.forEach(b => {
+          if (needed > 0 && b.unlocked && b.salt > 0) {
+            if (b.salt >= needed) {
+              b.salt -= needed;
+              needed = 0;
+            } else {
+              needed -= b.salt;
+              b.salt = 0;
+            }
+          }
+        });
+        const target = curr.boxes.find(b => !b.unlocked);
+        if (target) target.unlocked = true;
+      }
+    } else if (REFILL_TILES.includes(curr.pos)) {
+      // 仕入れ所: 塩2で補充上限を+1（最大3枚）
+      const curTot = curr.boxes.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;
+      const wantsUpgrade = bot.shouldUpgradeRefill ? bot.shouldUpgradeRefill(curr) : true;
+      if ((curr.refillLimit || 1) < MAX_REFILL && curTot >= REFILL_COST && wantsUpgrade) {
+        curr.refillLimit = (curr.refillLimit || 1) + 1;
+        let needed = REFILL_COST;
+        if (curr.pouchSalt >= needed) { curr.pouchSalt -= needed; needed = 0; }
+        else { needed -= curr.pouchSalt; curr.pouchSalt = 0; }
+        curr.boxes = curr.boxes.map(b => {
+          if (needed > 0 && b.unlocked && b.salt > 0) {
+            if (b.salt >= needed) { const rem = b.salt - needed; needed = 0; return { ...b, salt: rem }; }
+            needed -= b.salt;
+            return { ...b, salt: 0 };
           }
           return b;
         });
-        curr.guildLv += 1;
       }
     }
 
-    // 荷箱にセットを積む
-    while (true) {
-      const sets = findSets(curr.hand, config.tripletBonus);
-      const emptyIdx = bxs.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
-      if (sets.length > 0 && emptyIdx !== -1) {
-        const chosen = sets[0];
-        const ids = chosen.trio.map(c => c.id);
-        curr.hand = curr.hand.filter(c => !ids.includes(c.id));
-        bxs[emptyIdx] = { ...bxs[emptyIdx], cargo: chosen.info };
-      } else {
-        break;
-      }
-    }
+    packToBoxes(curr);
 
-    curr.score = sc;
-    curr.boxes = bxs;
-    state.discard = newDiscard;
-
-    state.turn = (state.turn + 1) % 4;
+    const nextTurn = (state.turn + 1) % 4;
+    state.gameOver = state.finalRoundTriggered && nextTurn === 0;
+    state.turn = nextTurn;
     if (state.turn === 0) totalRounds++;
   }
 
@@ -545,7 +632,6 @@ function runSingleGame(botStrategies, config) {
   };
 }
 
-
 // ====================================================
 // 4. UI ＆ Chart.js 可視化コントローラー
 // ====================================================
@@ -553,7 +639,7 @@ function runSingleGame(botStrategies, config) {
 let charts = {};
 let isSimulating = false;
 
-const PLAYER_COLORS = ['#a78bfa', '#34d399', '#fbbf24', '#f43f5e'];
+const PLAYER_COLORS = ['#f43f5e', '#34d399', '#fbbf24', '#a78bfa'];
 
 function initCharts() {
   Chart.defaults.color = '#94a3b8';
@@ -639,15 +725,15 @@ function initCharts() {
     data: {
       labels: ['P1', 'P2', 'P3', 'P4'],
       datasets: [
-        { label: '荷箱枠Lv (最大3)', data: [1.7, 1.7, 1.7, 1.7], backgroundColor: '#a78bfa', borderRadius: 4 },
-        { label: '会所Lv (最大3)', data: [1.6, 1.6, 1.6, 1.6], backgroundColor: '#34d399', borderRadius: 4 }
+        { label: '所持箱数 (1〜3箱)', data: [1.7, 1.7, 1.7, 1.7], backgroundColor: '#a78bfa', borderRadius: 4 },
+        { label: '裏返し特製箱数 (0〜3箱)', data: [1.2, 1.2, 1.2, 1.2], backgroundColor: '#34d399', borderRadius: 4 }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        y: { beginAtZero: true, min: 1, max: 3, ticks: { stepSize: 0.5, callback: v => `Lv.${v}` } },
+        y: { beginAtZero: true, min: 0, max: 3, ticks: { stepSize: 0.5, callback: v => `${v}箱` } },
         x: { grid: { display: false } }
       },
       plugins: { legend: { position: 'top', labels: { boxWidth: 10 } } }
@@ -655,7 +741,6 @@ function initCharts() {
   });
 }
 
-// 施設チャートの表示モード (winner / all)
 let facilityChartMode = 'winner';
 let latestStats = null;
 let latestBots = null;
@@ -670,23 +755,22 @@ function updateFacilityChartData() {
   if (isWinner) {
     charts.facility.data.datasets[0].data = latestBots.map((_, i) => {
       const wins = latestStats.winsByPlayer[i];
-      return wins > 0 ? (latestStats.winnerBoxesLevels[i] / wins).toFixed(2) : 1.00;
+      return wins > 0 ? (latestStats.winnerBoxesCount[i] / wins).toFixed(2) : 1.00;
     });
     charts.facility.data.datasets[1].data = latestBots.map((_, i) => {
       const wins = latestStats.winsByPlayer[i];
-      return wins > 0 ? (latestStats.winnerGuildLevels[i] / wins).toFixed(2) : 1.00;
+      return wins > 0 ? (latestStats.winnerFlippedCount[i] / wins).toFixed(2) : 0.00;
     });
   } else {
-    charts.facility.data.datasets[0].data = latestStats.boxesLevels.map(v => (v / latestTotalGames).toFixed(2));
-    charts.facility.data.datasets[1].data = latestStats.guildLevels.map(v => (v / latestTotalGames).toFixed(2));
+    charts.facility.data.datasets[0].data = latestStats.allBoxesCount.map(v => (v / latestTotalGames).toFixed(2));
+    charts.facility.data.datasets[1].data = latestStats.allFlippedCount.map(v => (v / latestTotalGames).toFixed(2));
   }
   charts.facility.update();
 }
 
-// プリセット適用
 function applyPreset(presetKey) {
   const presets = {
-    four_builds: ['cargo_boxes', 'guild_bonus', 'tea_rush', 'adaptive'],
+    four_builds: ['adaptive', 'guild_bonus', 'tea_rush', 'cargo_boxes'],
     boxes_vs_guild: ['cargo_boxes', 'guild_bonus', 'cargo_boxes', 'guild_bonus'],
     smart_vs_random: ['adaptive', 'random', 'random', 'random'],
     all_adaptive: ['adaptive', 'adaptive', 'adaptive', 'adaptive']
@@ -705,7 +789,6 @@ function applyPreset(presetKey) {
   });
 }
 
-// シミュレーション非同期バッチ実行
 async function runSimulation() {
   if (isSimulating) return;
   isSimulating = true;
@@ -720,28 +803,19 @@ async function runSimulation() {
   progressBar.style.width = '0%';
   progressText.textContent = '0%';
 
-  const totalGames = parseInt(document.getElementById('numGames').value, 10);
-  const winScore = parseInt(document.getElementById('winScore').value, 10);
-  const boxCosts = [
-    parseInt(document.getElementById('boxCostLv2').value, 10),
-    parseInt(document.getElementById('boxCostLv3').value, 10)
-  ];
-  const guildCosts = [
-    parseInt(document.getElementById('guildCostLv2').value, 10),
-    parseInt(document.getElementById('guildCostLv3').value, 10)
-  ];
-  const guildBonusLv2 = parseInt(document.getElementById('guildBonusLv2').value, 10);
-  const guildLv3Mode = document.getElementById('guildLv3Mode').value;
-  const tripletBonus = parseInt(document.getElementById('tripletBonus').value, 10);
+  const totalGames = parseInt(document.getElementById('numGames').value, 10) || 1000;
+  const winScore = parseInt(document.getElementById('winScore').value, 10) || 15;
+  const boxCost = parseInt(document.getElementById('boxCost').value, 10) || 2;
+  const flipCost = parseInt(document.getElementById('flipCost').value, 10) || 3;
+  const flipBonus = parseInt(document.getElementById('flipBonus').value, 10) || 2;
 
   const config = {
     winScore,
     handLimit: HAND_LIMIT,
-    boxCosts,
-    guildCosts,
-    guildBonusLv2,
-    guildLv3Mode,
-    tripletBonus
+    boxCost,
+    boxCosts: [boxCost, boxCost + 1, boxCost + 2],
+    flipCost,
+    flipBonus
   };
 
   const botKeys = [
@@ -750,22 +824,29 @@ async function runSimulation() {
     document.getElementById('p3Strategy').value,
     document.getElementById('p4Strategy').value
   ];
-  const bots = botKeys.map(k => AI_STRATEGIES[k]);
+  const bots = botKeys.map(k => AI_STRATEGIES[k] || AI_STRATEGIES.adaptive);
 
   const stats = {
     winsByPlayer: [0, 0, 0, 0],
     totalRounds: 0,
     roundsList: [],
     scoresByPlayer: [[], [], [], []],
-    boxesLevels: [0, 0, 0, 0],
-    guildLevels: [0, 0, 0, 0],
-    winnerBoxesLevels: [0, 0, 0, 0],
-    winnerGuildLevels: [0, 0, 0, 0],
-    roundFreq: {}
+    allBoxesCount: [0, 0, 0, 0],
+    allFlippedCount: [0, 0, 0, 0],
+    winnerBoxesCount: [0, 0, 0, 0],
+    winnerFlippedCount: [0, 0, 0, 0],
+    roundFreq: {},
+    boxStats: { 1: { count: 0, wins: 0 }, 2: { count: 0, wins: 0 }, 3: { count: 0, wins: 0 } },
+    flipStats: { 0: { count: 0, wins: 0 }, 1: { count: 0, wins: 0 }, 2: { count: 0, wins: 0 }, 3: { count: 0, wins: 0 } },
+    matrixStats: {
+      1: { 0: { count: 0, wins: 0 }, 1: { count: 0, wins: 0 } },
+      2: { 0: { count: 0, wins: 0 }, 1: { count: 0, wins: 0 }, 2: { count: 0, wins: 0 } },
+      3: { 0: { count: 0, wins: 0 }, 1: { count: 0, wins: 0 }, 2: { count: 0, wins: 0 }, 3: { count: 0, wins: 0 } }
+    }
   };
 
   const startTime = performance.now();
-  const batchSize = Math.max(25, Math.floor(totalGames / 40));
+  const batchSize = Math.max(25, Math.floor(totalGames / 30));
   let completed = 0;
 
   async function processBatch() {
@@ -779,13 +860,28 @@ async function runSimulation() {
       stats.roundFreq[res.rounds] = (stats.roundFreq[res.rounds] || 0) + 1;
 
       const winnerP = res.finalPlayers[wId];
-      stats.winnerBoxesLevels[wId] += winnerP.boxesLv;
-      stats.winnerGuildLevels[wId] += winnerP.guildLv;
+      const winUCount = winnerP.boxes.filter(b => b.unlocked).length;
+      const winFCount = winnerP.boxes.filter(b => b.unlocked && b.flipped).length;
+      stats.winnerBoxesCount[wId] += winUCount;
+      stats.winnerFlippedCount[wId] += winFCount;
 
       res.finalPlayers.forEach((p, idx) => {
+        const isWinner = (idx === wId);
         stats.scoresByPlayer[idx].push(p.score);
-        stats.boxesLevels[idx] += p.boxesLv;
-        stats.guildLevels[idx] += p.guildLv;
+        const uCount = p.boxes.filter(b => b.unlocked).length;
+        const fCount = p.boxes.filter(b => b.unlocked && b.flipped).length;
+        stats.allBoxesCount[idx] += uCount;
+        stats.allFlippedCount[idx] += fCount;
+
+        stats.boxStats[uCount].count++;
+        if (isWinner) stats.boxStats[uCount].wins++;
+        stats.flipStats[fCount].count++;
+        if (isWinner) stats.flipStats[fCount].wins++;
+
+        if (!stats.matrixStats[uCount]) stats.matrixStats[uCount] = {};
+        if (!stats.matrixStats[uCount][fCount]) stats.matrixStats[uCount][fCount] = { count: 0, wins: 0 };
+        stats.matrixStats[uCount][fCount].count++;
+        if (isWinner) stats.matrixStats[uCount][fCount].wins++;
       });
     }
     completed = nextTarget;
@@ -809,7 +905,7 @@ function finishSimulation(stats, totalGames, startTime, bots) {
   latestTotalGames = totalGames;
 
   const elapsedSec = ((performance.now() - startTime) / 1000).toFixed(2);
-  const gamesPerSec = (totalGames / elapsedSec).toFixed(0);
+  const gamesPerSec = (totalGames / Math.max(0.01, elapsedSec)).toFixed(0);
 
   stats.roundsList.sort((a, b) => a - b);
   const avgRounds = (stats.totalRounds / totalGames).toFixed(1);
@@ -818,16 +914,26 @@ function finishSimulation(stats, totalGames, startTime, bots) {
   const maxRounds = stats.roundsList[stats.roundsList.length - 1];
 
   const totalWins = stats.winsByPlayer.reduce((a, b) => a + b, 0);
-  const totalWinBoxLv = (stats.winnerBoxesLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
-  const totalWinGuildLv = (stats.winnerGuildLevels.reduce((a, b) => a + b, 0) / totalWins).toFixed(2);
+  const totalWinBoxCount = totalWins > 0 ? (stats.winnerBoxesCount.reduce((a, b) => a + b, 0) / totalWins).toFixed(2) : '1.00';
+  const totalWinFlippedCount = totalWins > 0 ? (stats.winnerFlippedCount.reduce((a, b) => a + b, 0) / totalWins).toFixed(2) : '0.00';
 
-  document.getElementById('kpiAvgRounds').textContent = `${avgRounds} 巡`;
-  document.getElementById('kpiMedianRounds').textContent = `中央値: ${medianRounds} 巡 (最速 ${minRounds} / 最遅 ${maxRounds})`;
-  document.getElementById('kpiSimSpeed').textContent = `${gamesPerSec} 試合/秒`;
-  document.getElementById('kpiTotalTime').textContent = `合計時間: ${elapsedSec} 秒 (${totalGames.toLocaleString()} 試合)`;
-  if (document.getElementById('kpiTotalWinHandLv')) document.getElementById('kpiTotalWinHandLv').textContent = `7枚固定`;
-  document.getElementById('kpiTotalWinBoxLv').textContent = `Lv.${totalWinBoxLv}`;
-  document.getElementById('kpiTotalWinGuildLv').textContent = `Lv.${totalWinGuildLv}`;
+  let topIdx = 0;
+  let maxWins = -1;
+  stats.winsByPlayer.forEach((w, idx) => {
+    if (w > maxWins) {
+      maxWins = w;
+      topIdx = idx;
+    }
+  });
+  const topRate = ((maxWins / totalGames) * 100).toFixed(1);
+
+  if (document.getElementById('kpiAvgRounds')) document.getElementById('kpiAvgRounds').textContent = `${avgRounds} 巡`;
+  if (document.getElementById('kpiMedianRounds')) document.getElementById('kpiMedianRounds').textContent = `中央値: ${medianRounds} 巡 (最速 ${minRounds} / 最遅 ${maxRounds})`;
+  if (document.getElementById('kpiTopPlayer')) document.getElementById('kpiTopPlayer').textContent = `P${topIdx + 1} (${bots[topIdx].name})`;
+  if (document.getElementById('kpiTopWinRate')) document.getElementById('kpiTopWinRate').textContent = `勝率 ${topRate}% (${maxWins}勝)`;
+  if (document.getElementById('kpiWinnerLvs')) document.getElementById('kpiWinnerLvs').textContent = `📦${totalWinBoxCount}箱 / ✨特製${totalWinFlippedCount}箱`;
+  if (document.getElementById('kpiSpeed')) document.getElementById('kpiSpeed').textContent = `${gamesPerSec} 試合/秒`;
+  if (document.getElementById('kpiTime')) document.getElementById('kpiTime').textContent = `実行時間: ${elapsedSec} 秒 (${totalGames.toLocaleString()} 試合)`;
 
   document.getElementById('progressContainer').style.display = 'none';
 
@@ -852,46 +958,108 @@ function finishSimulation(stats, totalGames, startTime, bots) {
 
   updateFacilityChartData();
 
-  const tbody = document.getElementById('resultsTableBody');
-  tbody.innerHTML = '';
+  // レベル別統計の描画
+  const totalPlayerInstances = totalGames * 4;
+  const boxStatsEl = document.getElementById('boxLevelStats');
+  if (boxStatsEl) {
+    boxStatsEl.innerHTML = '';
+    const boxLabels = { 1: '1箱所持 (初期)', 2: '2箱所持 (増設)', 3: '3箱所持 (最大)' };
+    for (let b = 1; b <= 3; b++) {
+      const st = stats.boxStats[b];
+      const reachPct = ((st.count / totalPlayerInstances) * 100).toFixed(1);
+      const winRate = st.count > 0 ? ((st.wins / st.count) * 100).toFixed(1) : '0.0';
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(15,23,42,0.4); padding: 5px 8px; border-radius: 4px; font-size: 11px;';
+      row.innerHTML = `
+        <span><strong>${boxLabels[b]}</strong> <span style="color: #64748b;">(${reachPct}%)</span></span>
+        <span style="font-weight: 800; color: #a78bfa;">🏆 勝率 ${winRate}% <span style="color: #64748b; font-size: 10px;">(${st.wins}勝)</span></span>
+      `;
+      boxStatsEl.appendChild(row);
+    }
+  }
 
-  const tableData = bots.map((bot, i) => {
-    const wins = stats.winsByPlayer[i];
-    const rate = ((wins / totalGames) * 100).toFixed(1);
-    const scores = stats.scoresByPlayer[i];
-    const avgScore = (scores.reduce((a, b) => a + b, 0) / totalGames).toFixed(1);
-    const maxScore = Math.max(...scores);
-    const winBoxLv = wins > 0 ? (stats.winnerBoxesLevels[i] / wins).toFixed(2) : '-';
-    const winGuildLv = wins > 0 ? (stats.winnerGuildLevels[i] / wins).toFixed(2) : '-';
-    const allBoxLv = (stats.boxesLevels[i] / totalGames).toFixed(2);
-    const allGuildLv = (stats.guildLevels[i] / totalGames).toFixed(2);
+  const guildStatsEl = document.getElementById('guildLevelStats');
+  if (guildStatsEl) {
+    guildStatsEl.innerHTML = '';
+    const flipLabels = { 0: '特製箱 0個 (木箱のみ)', 1: '特製箱 1個 (+2塩)', 2: '特製箱 2個 (+4塩)', 3: '特製箱 3個 (+6塩)' };
+    for (let f = 0; f <= 3; f++) {
+      const st = stats.flipStats[f];
+      const reachPct = ((st.count / totalPlayerInstances) * 100).toFixed(1);
+      const winRate = st.count > 0 ? ((st.wins / st.count) * 100).toFixed(1) : '0.0';
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(15,23,42,0.4); padding: 5px 8px; border-radius: 4px; font-size: 11px;';
+      row.innerHTML = `
+        <span><strong>${flipLabels[f]}</strong> <span style="color: #64748b;">(${reachPct}%)</span></span>
+        <span style="font-weight: 800; color: #34d399;">🏆 勝率 ${winRate}% <span style="color: #64748b; font-size: 10px;">(${st.wins}勝)</span></span>
+      `;
+      guildStatsEl.appendChild(row);
+    }
+  }
 
-    return { id: i + 1, name: bot.name, wins, rate, avgScore, maxScore, winBoxLv, winGuildLv, allBoxLv, allGuildLv };
-  }).sort((a, b) => b.rate - a.rate);
-
-  tableData.forEach((row, rank) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><span class="rank-badge rank-${rank + 1}">${rank + 1}</span></td>
-      <td><strong>P${row.id}</strong></td>
-      <td><span style="color: ${PLAYER_COLORS[row.id - 1]}; font-weight: bold;">${row.name}</span></td>
-      <td><strong>${row.wins}</strong> / ${totalGames}</td>
-      <td>
-        <div class="winrate-bar-container">
-          <div class="winrate-bar">
-            <div class="winrate-bar-fill" style="width: ${row.rate}%; background: ${PLAYER_COLORS[row.id - 1]};"></div>
+  const matrixEl = document.getElementById('synergyMatrix');
+  if (matrixEl) {
+    matrixEl.innerHTML = '';
+    for (let b = 1; b <= 3; b++) {
+      for (let f = 0; f <= b; f++) {
+        const st = stats.matrixStats[b] && stats.matrixStats[b][f] ? stats.matrixStats[b][f] : { count: 0, wins: 0 };
+        const share = ((st.count / totalPlayerInstances) * 100).toFixed(1);
+        const winRate = st.count > 0 ? ((st.wins / st.count) * 100).toFixed(1) : '0.0';
+        const cell = document.createElement('div');
+        cell.className = 'matrix-cell';
+        cell.innerHTML = `
+          <div class="matrix-title">
+            <span>📦${b}箱 × ✨特製${f}箱</span>
+            <span style="color: #64748b;">${share}%</span>
           </div>
-          <span style="font-weight: bold;">${row.rate}%</span>
-        </div>
-      </td>
-      <td><strong>${row.avgScore}</strong> 点</td>
-      <td style="color: #94a3b8; font-weight: bold; background: rgba(148, 163, 184, 0.08);">7枚固定</td>
-      <td style="color: #a78bfa; font-weight: bold; background: rgba(167, 139, 250, 0.08);">Lv.${row.winBoxLv}</td>
-      <td style="color: #34d399; font-weight: bold; background: rgba(52, 211, 153, 0.08);">Lv.${row.winGuildLv}</td>
-      <td style="color: #94a3b8; font-size: 11px;">📦${row.allBoxLv} 🏛️${row.allGuildLv}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+          <div class="matrix-winrate">🏆 ${winRate}%</div>
+          <div class="matrix-sub">${st.wins}勝 / ${st.count}回</div>
+        `;
+        matrixEl.appendChild(cell);
+      }
+    }
+  }
+
+  const tbody = document.getElementById('statsTableBody');
+  if (tbody) {
+    tbody.innerHTML = '';
+
+    const tableData = bots.map((bot, i) => {
+      const wins = stats.winsByPlayer[i];
+      const rate = ((wins / totalGames) * 100).toFixed(1);
+      const scores = stats.scoresByPlayer[i];
+      const avgScore = (scores.reduce((a, b) => a + b, 0) / totalGames).toFixed(1);
+      const winBoxCount = wins > 0 ? (stats.winnerBoxesCount[i] / wins).toFixed(2) : '-';
+      const winFlippedCount = wins > 0 ? (stats.winnerFlippedCount[i] / wins).toFixed(2) : '-';
+      const allBoxCount = (stats.allBoxesCount[i] / totalGames).toFixed(2);
+      const allFlippedCount = (stats.allFlippedCount[i] / totalGames).toFixed(2);
+
+      return { id: i + 1, name: bot.name, wins, rate, avgScore, winBoxCount, winFlippedCount, allBoxCount, allFlippedCount };
+    }).sort((a, b) => b.rate - a.rate);
+
+    tableData.forEach((row, rank) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="rank-badge rank-${rank + 1}">${rank + 1}</span></td>
+        <td><strong>P${row.id}</strong></td>
+        <td><span style="color: ${PLAYER_COLORS[row.id - 1]}; font-weight: bold;">${row.name}</span></td>
+        <td><strong>${row.wins}</strong> / ${totalGames}</td>
+        <td>
+          <div class="winrate-bar-container">
+            <div class="winrate-bar">
+              <div class="winrate-bar-fill" style="width: ${row.rate}%; background: ${PLAYER_COLORS[row.id - 1]};"></div>
+            </div>
+            <span style="font-weight: bold;">${row.rate}%</span>
+          </div>
+        </td>
+        <td><strong>${row.avgScore}</strong> 点</td>
+        <td style="color: #94a3b8; font-weight: bold; background: rgba(148, 163, 184, 0.08);">5枚固定</td>
+        <td style="color: #a78bfa; font-weight: bold; background: rgba(167, 139, 250, 0.08);">${row.winBoxCount}箱</td>
+        <td style="color: #34d399; font-weight: bold; background: rgba(52, 211, 153, 0.08);">特製${row.winFlippedCount}箱</td>
+        <td style="color: #94a3b8; font-size: 11px;">📦${row.allBoxCount} ✨${row.allFlippedCount}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
 
   const btnRun = document.getElementById('btnRun');
   btnRun.disabled = false;
@@ -919,5 +1087,5 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btnRun').addEventListener('click', runSimulation);
 
-  setTimeout(runSimulation, 200);
+  setTimeout(runSimulation, 100);
 });

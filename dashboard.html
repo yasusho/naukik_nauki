@@ -4,41 +4,525 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ナウキ運び バランスシミュレーター ダッシュボード</title>
-  <link rel="stylesheet" href="dashboard.css">
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --panel-bg: #1e293b;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-purple: #a78bfa;
+      --accent-green: #34d399;
+      --accent-gold: #fbbf24;
+      --accent-red: #f43f5e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: var(--panel-bg);
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-title h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+
+    .header-title .badge {
+      background-color: rgba(56, 189, 248, 0.2);
+      color: var(--accent-blue);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .btn-back {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      transition: all 0.2s;
+    }
+
+    .btn-back:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    .dashboard-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Control Sidebar */
+    .control-sidebar {
+      width: 320px;
+      background-color: var(--panel-bg);
+      border-right: 1px solid var(--card-border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .panel-card {
+      background-color: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .form-select, .form-input {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-select:focus, .form-input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .preset-btn {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      border-color: var(--accent-blue);
+      background-color: rgba(56, 189, 248, 0.1);
+    }
+
+    .preset-btn.active {
+      border-color: var(--accent-blue);
+      background-color: rgba(56, 189, 248, 0.2);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .player-setup-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .player-avatar-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .player-setup-select {
+      flex: 1;
+      background-color: var(--bg-dark);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+
+    .btn-run {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      transition: all 0.2s;
+    }
+
+    .btn-run:hover {
+      background: linear-gradient(135deg, #0369a1, #075985);
+      transform: translateY(-1px);
+    }
+
+    .btn-run:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .progress-container {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .progress-track {
+      background-color: var(--bg-dark);
+      height: 6px;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .progress-bar-inner {
+      background-color: var(--accent-blue);
+      height: 100%;
+      width: 0%;
+      transition: width 0.1s;
+    }
+
+    .progress-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    /* Right Main Panel */
+    .results-panel {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .kpi-card {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+    }
+
+    .kpi-blue::before { background-color: var(--accent-blue); }
+    .kpi-gold::before { background-color: var(--accent-gold); }
+    .kpi-green::before { background-color: var(--accent-green); }
+    .kpi-purple::before { background-color: var(--accent-purple); }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .kpi-val {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Charts Grid */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .chart-card {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chart-card.full-width {
+      grid-column: span 2;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chart-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chart-toggle-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .facility-toggle-btn {
+      background-color: var(--bg-dark);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .facility-toggle-btn.active {
+      background-color: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .chart-body {
+      position: relative;
+      height: 220px;
+      width: 100%;
+    }
+
+    /* Detailed Table */
+    .table-card {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .data-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      background-color: rgba(15, 23, 42, 0.4);
+    }
+
+    .data-table tr:hover td {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    .rank-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .rank-1 { background-color: rgba(251, 191, 36, 0.2); color: var(--accent-gold); }
+    .rank-2 { background-color: rgba(148, 163, 184, 0.2); color: #cbd5e1; }
+    .rank-3 { background-color: rgba(180, 83, 9, 0.2); color: #f59e0b; }
+    .rank-4 { background-color: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+
+    .winrate-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .winrate-bar {
+      flex: 1;
+      height: 6px;
+      background-color: var(--bg-dark);
+      border-radius: 9999px;
+      overflow: hidden;
+      min-width: 60px;
+    }
+
+    .winrate-bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+    }
+
+    .matrix-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .matrix-cell {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .matrix-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .matrix-winrate {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--accent-gold);
+    }
+
+    .matrix-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+  </style>
 </head>
 <body>
 
   <!-- Header -->
-  <header class="dash-header">
-    <div class="dash-title">
-      <span>📊 ナウキ運び バランスシミュレーター</span>
-      <span class="dash-badge">AI Analysis & Metrics</span>
+  <header>
+    <div class="header-title">
+      <h1>🏮 ナウキ運び バランス検証ダッシュボード</h1>
+      <span class="badge">純粋60枚デッキ ＆ 初期1箱 ＆ 木箱素点そのまま ＆ 桐箱+2塩モデル</span>
     </div>
-    <a href="index.html" class="nav-btn">
-      <span>🏮</span>
-      <span>ゲームプレイに戻る</span>
-    </a>
+    <div class="header-actions">
+      <a href="index.html" class="btn-back">← ゲーム画面に戻る</a>
+    </div>
   </header>
 
   <!-- Main Container -->
-  <div class="dash-container">
+  <div class="dashboard-container">
 
-    <!-- Left: Controls Panel -->
-    <aside class="controls-panel">
+    <!-- Left: Controls -->
+    <aside class="control-sidebar">
 
-      <!-- Presets Card -->
+      <!-- Preset Scenarios Card -->
       <div class="panel-card">
         <div class="panel-title">
-          <span>⚡ 戦略対決 プリセット</span>
+          <span>🎯 対戦プリセット</span>
         </div>
-        <div class="preset-grid">
-          <button class="preset-btn active" data-preset="four_builds">4大戦略トーナメント</button>
-          <button class="preset-btn" data-preset="hand_vs_rush">手札拡張 vs 直行速攻</button>
-          <button class="preset-btn" data-preset="boxes_vs_guild">荷箱特化 vs 会所特化</button>
-          <button class="preset-btn" data-preset="smart_vs_random">実力 vs ランダム3人</button>
-          <button class="preset-btn" data-preset="all_adaptive">状況適応型 4人対決</button>
+        <div class="preset-buttons">
+          <button class="preset-btn active" data-preset="four_builds">4大戦略マッチ</button>
+          <button class="preset-btn" data-preset="boxes_vs_guild">荷箱 vs 桐箱</button>
+          <button class="preset-btn" data-preset="smart_vs_random">AI vs ランダム</button>
+          <button class="preset-btn" data-preset="all_adaptive">状況適応 4人戦</button>
         </div>
       </div>
 
@@ -49,49 +533,45 @@
         </div>
 
         <div class="player-setup-row">
-          <div class="player-avatar-badge" style="background: #38bdf8;">P1</div>
+          <div class="player-avatar-badge" style="background: #f43f5e;">P1</div>
           <select id="p1Strategy" class="player-setup-select">
-            <option value="hand_limit" selected>🎴 手札拡張型 (HandLimit)</option>
-            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
-            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
-            <option value="tea_rush">⚡ 直行速攻型 (Direct Rush)</option>
-            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+            <option value="adaptive" selected>🎯 適応型 (Adaptive)</option>
+            <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
+            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
         </div>
 
         <div class="player-setup-row">
-          <div class="player-avatar-badge" style="background: #a78bfa;">P2</div>
+          <div class="player-avatar-badge" style="background: #34d399;">P2</div>
           <select id="p2Strategy" class="player-setup-select">
-            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
-            <option value="cargo_boxes" selected>📦 荷箱特化型 (CargoBoxes)</option>
-            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
-            <option value="tea_rush">⚡ 直行速攻型 (Direct Rush)</option>
-            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+            <option value="adaptive">🎯 適応型 (Adaptive)</option>
+            <option value="cargo_boxes" selected>📦 荷箱増設特化 (More Boxes)</option>
+            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
         </div>
 
         <div class="player-setup-row">
-          <div class="player-avatar-badge" style="background: #34d399;">P3</div>
+          <div class="player-avatar-badge" style="background: #fbbf24;">P3</div>
           <select id="p3Strategy" class="player-setup-select">
-            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
-            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
-            <option value="guild_bonus" selected>🏛️ 会所特化型 (GuildBonus)</option>
-            <option value="tea_rush">⚡ 直行速攻型 (Direct Rush)</option>
-            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+            <option value="adaptive">🎯 適応型 (Adaptive)</option>
+            <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
+            <option value="guild_bonus" selected>🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
         </div>
 
         <div class="player-setup-row">
-          <div class="player-avatar-badge" style="background: #fbbf24;">P4</div>
+          <div class="player-avatar-badge" style="background: #a78bfa;">P4</div>
           <select id="p4Strategy" class="player-setup-select">
-            <option value="hand_limit">🎴 手札拡張型 (HandLimit)</option>
-            <option value="cargo_boxes">📦 荷箱特化型 (CargoBoxes)</option>
-            <option value="guild_bonus">🏛️ 会所特化型 (GuildBonus)</option>
-            <option value="tea_rush" selected>⚡ 直行速攻型 (Direct Rush)</option>
-            <option value="adaptive">🎯 状況適応型 (Adaptive)</option>
+            <option value="adaptive">🎯 適応型 (Adaptive)</option>
+            <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
+            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="tea_rush" selected>⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
         </div>
@@ -106,55 +586,35 @@
         <div class="form-group">
           <label class="form-label">シミュレーション試合数</label>
           <select id="numGames" class="form-select">
-            <option value="100">100 試合 (超高速)</option>
-            <option value="500">500 試合</option>
+            <option value="200">200 試合 (超高速)</option>
             <option value="1000" selected>1,000 試合 (標準)</option>
             <option value="3000">3,000 試合 (高精度)</option>
-            <option value="5000">5,000 試合 (超高精度)</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label class="form-label">勝利目標得点 (点)</label>
-          <input type="number" id="winScore" class="form-input" value="20" min="5" max="100">
+          <label class="form-label">🏆 勝利目標スコア (塩)</label>
+          <input type="number" id="winScore" class="form-input" value="15" min="5" max="50">
         </div>
 
         <div class="form-group">
           <label class="form-label">🎴 手札枚数（固定）</label>
-          <input type="number" id="handLimit" class="form-input" value="7" min="1" max="15" readonly style="background: #1e293b; color: #94a3b8; cursor: not-allowed;">
+          <input type="number" id="handLimit" class="form-input" value="5" min="1" max="15" readonly style="background: #1e293b; color: #94a3b8; cursor: not-allowed;">
         </div>
 
         <div class="form-group">
-          <label class="form-label">📦 荷箱枠拡張 コスト Lv2 / Lv3 (塩)</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <input type="number" id="boxCostLv2" class="form-input" value="3" min="1" max="30" title="Lv2コスト">
-            <input type="number" id="boxCostLv3" class="form-input" value="5" min="1" max="30" title="Lv3コスト">
-          </div>
+          <label class="form-label">🛖 箱屋: 箱の増設コスト (塩)</label>
+          <input type="number" id="boxCost" class="form-input" value="2" min="1" max="30">
         </div>
 
         <div class="form-group">
-          <label class="form-label">🏛️ 会所強化 コスト Lv2 / Lv3 (塩)</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <input type="number" id="guildCostLv2" class="form-input" value="4" min="1" max="30" title="Lv2コスト">
-            <input type="number" id="guildCostLv3" class="form-input" value="7" min="1" max="30" title="Lv3コスト">
-          </div>
+          <label class="form-label">🏛️ 会所: 箱の桐箱化コスト (塩)</label>
+          <input type="number" id="flipCost" class="form-input" value="3" min="1" max="30">
         </div>
 
         <div class="form-group">
-          <label class="form-label">⚓ 港売却レート Lv2 / Lv3</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <input type="number" id="guildBonusLv2" class="form-input" value="2" min="0" max="30" title="Lv2ボーナス(+塩)">
-            <select id="guildLv3Mode" class="form-input" title="Lv3売却レート">
-              <option value="double" selected>🔥 売却値 2倍</option>
-              <option value="flat4">+4 塩 (旧仕様)</option>
-              <option value="flat6">+6 塩 (高フラット)</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">🎲 刻子（同数3枚）ボーナス (+塩)</label>
-          <input type="number" id="tripletBonus" class="form-input" value="0" min="0" max="20">
+          <label class="form-label">✨ 特製桐箱 売却ボーナス (+塩)</label>
+          <input type="number" id="flipBonus" class="form-input" value="2" min="1" max="30">
         </div>
 
         <button id="btnRun" class="btn-run" style="margin-top: 14px;">
@@ -193,7 +653,7 @@
         <div class="kpi-card kpi-green">
           <span class="kpi-label">🏆 優勝者 平均施設Lv</span>
           <span id="kpiWinnerLvs" class="kpi-val" style="font-size: 18px;">--</span>
-          <span class="kpi-sub">🎴手札 / 📦荷箱 / 🏛️会所</span>
+          <span class="kpi-sub">📦荷箱 / 🏛️会所</span>
         </div>
 
         <div class="kpi-card kpi-purple">
@@ -264,6 +724,28 @@
 
       </div>
 
+      <!-- Level Breakdown Analysis Card -->
+      <div class="table-card">
+        <div class="panel-title" style="margin-bottom: 8px;">
+          <span>📊 強化レベル別 勝率＆到達度 マトリクス分析</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <span style="font-size: 11px; font-weight: 700; color: #a78bfa;">📦 荷箱拡張レベル別 (1枠 ➔ 2枠 ➔ 3枠)</span>
+            <div id="boxLevelStats" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;"></div>
+          </div>
+          <div>
+            <span style="font-size: 11px; font-weight: 700; color: #34d399;">🏛️ 会所強化レベル別 (通常 ➔ +2塩 ➔ 2倍)</span>
+            <div id="guildLevelStats" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;"></div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <span style="font-size: 11px; font-weight: 700; color: #fbbf24;">🧩 荷箱Lv × 会所Lv 組み合わせシナジー勝率</span>
+          <div id="synergyMatrix" class="matrix-grid"></div>
+        </div>
+      </div>
+
       <!-- Detailed Data Table -->
       <div class="table-card">
         <div class="panel-title" style="margin-bottom: 12px;">
@@ -278,7 +760,7 @@
               <th>勝利数 / 試合数</th>
               <th>勝率</th>
               <th>平均得点</th>
-              <th style="color: #fbbf24;">🏆 勝者 手札Lv</th>
+              <th style="color: #94a3b8;">🎴 手札</th>
               <th style="color: #a78bfa;">🏆 勝者 荷箱Lv</th>
               <th style="color: #34d399;">🏆 勝者 会所Lv</th>
               <th style="color: #94a3b8;">全試合 平均Lv</th>

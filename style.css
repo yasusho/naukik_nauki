@@ -176,19 +176,19 @@ body {
   gap: 1px;
 }
 
-/* 3x3 Circular Board */
+/* 4x3 Circular Board (10 Tiles) */
 .board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
 }
 
 .tile {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 8px;
-  min-height: 110px;
+  padding: 6px;
+  min-height: 86px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -213,16 +213,16 @@ body {
 }
 
 .tile-num {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #64748b;
   background: #f1f5f9;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 4px;
 }
 
 .tile-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #1e293b;
 }
@@ -233,9 +233,9 @@ body {
   background: #f5f3ff;
   border: 1px solid #ddd6fe;
   border-radius: 4px;
-  padding: 2px 4px;
+  padding: 1px 3px;
   text-align: center;
-  margin: 3px 0;
+  margin: 2px 0;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -244,47 +244,42 @@ body {
   display: flex;
   gap: 3px;
   justify-content: center;
-  min-height: 22px;
+  min-height: 18px;
   align-items: center;
-  margin: 2px 0;
+  margin: 1px 0;
 }
 
 .occupant-badge {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  border: 1px solid #ffffff;
 }
 
 .tile-cards {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  min-height: 24px;
-  background: #f8fafc;
-  border: 1px solid #f1f5f9;
-  padding: 3px 5px;
-  border-radius: 6px;
+  gap: 2px;
+  justify-content: center;
+  min-height: 18px;
   align-items: center;
 }
 
 .tile-empty {
-  font-size: 10px;
+  font-size: 9px;
   color: #94a3b8;
-  text-align: center;
-  width: 100%;
 }
 
 .tile-card-chip {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 4px;
   border: 1px solid;
   display: inline-flex;
@@ -294,10 +289,11 @@ body {
 .chip-tea { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 .chip-rice { background: #fefce8; color: #854d0e; border-color: #fef08a; }
 .chip-cloth { background: #f0f9ff; color: #075985; border-color: #bae6fd; }
+.chip-wild { background: #fdf4ff; color: #a21caf; border-color: #f0abfc; font-weight: 800; }
 
-/* Center Hub */
+/* Center Hub in 4x3 Grid (spans 2 columns in center row 2) */
 .center-hub {
-  grid-column: 2;
+  grid-column: 2 / span 2;
   grid-row: 2;
   background: #ffffff;
   border: 1px solid #cbd5e1;
@@ -309,7 +305,7 @@ body {
   align-items: center;
   gap: 4px;
   text-align: center;
-  min-height: 110px;
+  min-height: 86px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -400,6 +396,12 @@ body {
 .card-tea { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
 .card-rice { background: #fefce8; border-color: #fef08a; color: #854d0e; }
 .card-cloth { background: #f0f9ff; border-color: #bae6fd; color: #075985; }
+.card-wild {
+  background: linear-gradient(135deg, #fffbeb 0%, #fdf4ff 50%, #fef3c7 100%);
+  border: 1.5px solid #f59e0b;
+  color: #b45309;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+}
 
 .card-num {
   font-size: 20px;
@@ -471,7 +473,7 @@ body {
 
 .cargo-boxes-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 8px;
 }
 
@@ -496,14 +498,48 @@ body {
   text-align: center;
 }
 
-.cargo-box-card.box-has-salt {
-  background: #f0fdf4;
-  border-color: #86efac;
+.cargo-box-card.box-flipped {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.15);
 }
 
-.cargo-box-card.box-loaded {
-  background: #f0f9ff;
-  border-color: #7dd3fc;
+.cargo-box-card.box-normal {
+  background: #fafaf9;
+  border: 1px solid #d6d3d1;
+}
+
+.cargo-badge-flipped {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.cargo-badge-normal {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #78716c;
+  color: #ffffff;
+}
+
+.cargo-box-card.box-salt-filled {
+  background: #f0fdfa;
+  border: 1px solid #14b8a6;
+  box-shadow: 0 1px 4px rgba(20, 184, 166, 0.2);
+}
+
+.cargo-badge-salt-filled {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #0d9488;
+  color: #ffffff;
 }
 
 .cargo-box-card.box-empty {
