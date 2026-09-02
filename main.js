@@ -781,30 +781,33 @@ function App() {
 
         // 施設アクション
         if (nextPos === 0) {
-          // 地元: 箱数手当 ＋ 納品
+          // 地元: どの箱を空にするかを選び納品する
           let keep = 0;
           const uCount = bxs.filter(b => b.unlocked).length;
-          // 🏡 地元基本手当: 所持している荷箱数 × 1塩 (周回基本収入)
-          sc += uCount;
-
           const curTotSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + pouchSalt;
           if (uCount < 3 && sc < WIN_SCORE - 3) {
-            const nextCost = BOX_COSTS[uCount - 1];
+            const nextCost = BOX_COSTS[uCount - 1] || 1;
             if (curTotSalt >= nextCost) keep = nextCost;
           }
-          const deliver = Math.max(0, curTotSalt - keep);
-          sc += deliver;
 
-          let rem = deliver;
-          if (pouchSalt >= rem) { pouchSalt -= rem; rem = 0; }
-          else { rem -= pouchSalt; pouchSalt = 0; }
+          let preservedSalt = 0;
           bxs = bxs.map(b => {
-            if (rem > 0 && b.unlocked && b.salt > 0) {
-              if (b.salt >= rem) { const sRem = b.salt - rem; rem = 0; return { ...b, salt: sRem }; }
-              else { rem -= b.salt; return { ...b, salt: 0 }; }
+            if (b.unlocked && b.salt > 0) {
+              if (preservedSalt < keep && (sc + curTotSalt < WIN_SCORE)) {
+                preservedSalt += b.salt;
+                return b;
+              } else {
+                sc += b.salt;
+                return { ...b, salt: 0 };
+              }
             }
             return b;
           });
+
+          if (pouchSalt > 0) {
+            sc += pouchSalt;
+            pouchSalt = 0;
+          }
         } else if (nextPos === 5) {
           // 港 (5): 荷箱の荷下ろし (木箱=素点そのまま, 高級箱=素点+3塩！)
           bxs = bxs.map(b => {
@@ -1126,7 +1129,7 @@ function App() {
             ])
           ),
 
-          // 会所(3, 9): 箱を裏返す (2塩 ➔ 高級箱化: 素点の2倍！)
+          // 会所(3, 9): 箱を裏返す (2塩 ➔ 高級箱化: 素点+3塩！)
           isGuild && (
             unflippedBoxesCount > 0 ? (
               h('button', {
@@ -1134,7 +1137,7 @@ function App() {
                 onClick: () => handleFacility('flip'),
                 className: 'btn btn-success',
                 style: { width: '100%', fontSize: '10px', padding: '4px 4px' }
-              }, `🏛️ 木箱を高級箱に強化 (出荷2倍🔥) (🧂${FLIP_COST}塩)`)
+              }, `🏛️ 木箱を高級箱に強化 (素点+3塩🔥) (🧂${FLIP_COST}塩)`)
             ) : h('div', { style: { fontSize: '10px', color: '#2b8a3e', textAlign: 'center' } }, '✨ すべての箱が高級箱です')
           )
         ]),
@@ -1310,7 +1313,7 @@ function App() {
             : (b.flipped ? 'box-flipped' : 'box-normal');
 
           const badgeClass = b.flipped ? 'cargo-badge-flipped' : 'cargo-badge-normal';
-          const badgeText = b.flipped ? '✨ 特製桐箱 (+2塩高級出荷🔥)' : '📦 木箱 (素点出荷)';
+          const badgeText = b.flipped ? '✨ 高級箱 (素点+3塩🔥)' : '📦 木箱 (素点出荷)';
 
           // ① 塩が詰まっている場合
           if (b.salt > 0) {

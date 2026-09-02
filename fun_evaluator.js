@@ -505,18 +505,30 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       tracking.homeVisits[state.turn]++;
       const curTotSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;
       const keep = curr.strat.getKeepAmount(curr);
-      const deliver = Math.max(0, curTotSalt - keep);
-      curr.score += deliver;
-      let rem = deliver;
-      if (curr.pouchSalt >= rem) { curr.pouchSalt -= rem; rem = 0; }
-      else { rem -= curr.pouchSalt; curr.pouchSalt = 0; }
+
+      // 箱単位で「空にして納品する」か「塩を残して投資用に保持する」かを選択
+      // keepAmount（投資用に取り置く量）に達するまで箱を温存し、それ以外の箱は全額納品して空にする
+      let preservedSalt = 0;
       bxs = bxs.map(b => {
-        if (rem > 0 && b.unlocked && b.salt > 0) {
-          if (b.salt >= rem) { const sRem = b.salt - rem; rem = 0; return { ...b, salt: sRem }; }
-          else { rem -= b.salt; return { ...b, salt: 0 }; }
+        if (b.unlocked && b.salt > 0) {
+          if (preservedSalt < keep && (curr.score + curTotSalt < WIN_SCORE)) {
+            // この箱の塩は温存（空にしない・投資用）
+            preservedSalt += b.salt;
+            return b;
+          } else {
+            // この箱の塩をすべて納品して箱を完全に空にする！
+            curr.score += b.salt;
+            return { ...b, salt: 0 };
+          }
         }
         return b;
       });
+
+      // pouchSalt（手持ち小銭）がある場合は得点化
+      if (curr.pouchSalt > 0) {
+        curr.score += curr.pouchSalt;
+        curr.pouchSalt = 0;
+      }
     } else if (curr.pos === PORT_TILE) {
       tracking.portVisits[state.turn]++;
       bxs = bxs.map(b => {
