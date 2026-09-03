@@ -32,18 +32,41 @@ const CARD_TEMPLATES = {
 };
 
 // 10マス完全交互配置: 0地元 ➔ 1箱屋 ➔ 2仕入れ所 ➔ 3会所 ➔ 4街道 ➔ 5港 ➔ 6街道 ➔ 7箱屋 ➔ 8仕入れ所 ➔ 9会所
+// 線対称・鏡像配置（4市場＋拠点独立制・全6エリア）
+// 0:地元 ➔ 1:箱屋 ➔ 2:仕入 ➔ 3:会所 ➔ 4:街道 ➔ 5:港 ➔ 6:街道 ➔ 7:会所 ➔ 8:仕入 ➔ 9:箱屋
 const TILES = [
-  { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品・手当', costText: '箱数手当+納品' },
+  { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品・得点化', costText: '箱選択納品' },
   { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
   { pos: 2, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
   { pos: 3, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 4, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 5, name: '港',   icon: '⚓', isFacility: true, short: '換金', costText: '木箱:素点 / 高級箱:素点+3塩🔥' },
   { pos: 6, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 7, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
+  { pos: 7, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 8, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
-  { pos: 9, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
+  { pos: 9, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
 ];
+
+// 4市場＋拠点独立制（全6エリア）
+// 0: 地元(0), 1: 箱屋市場(1,9), 2: 仕入市場(2,8), 3: 会所市場(3,7), 4: 街道市場(4,6), 5: 港(5)
+const MARKET_NAMES = [
+  '地元カード置き場',
+  '箱屋市場',
+  '仕入市場',
+  '会所市場',
+  '街道市場',
+  '港カード置き場'
+];
+
+function getMarketIndex(pos) {
+  if (pos === 0) return 0;
+  if (pos === 1 || pos === 9) return 1;
+  if (pos === 2 || pos === 8) return 2;
+  if (pos === 3 || pos === 7) return 3;
+  if (pos === 4 || pos === 6) return 4;
+  if (pos === 5) return 5;
+  return 0;
+}
 
 const PLAYERS_DEF = [
   { name: 'あなた', color: '#c53030', isHuman: true },
@@ -229,24 +252,25 @@ function initGame() {
     hand: d.splice(0, HAND_LIMIT),
     boxes: [
       { unlocked: true, flipped: false, cargo: null, salt: 0 },  // 1箱目 (初期所持)
-      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 2箱目 (箱屋で2塩で増設)
-      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 3箱目 (箱屋で3塩で増設)
-      { unlocked: false, flipped: false, cargo: null, salt: 0 }  // 4箱目 (箱屋で4塩で増設)
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 2箱目 (箱屋で1塩で増設)
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 3箱目 (箱屋で2塩で増設)
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }  // 4箱目 (箱屋で3塩で増設)
     ],
     pouchSalt: 0,
     score: 0,
     refillLimit: 1
   }));
-  const road = Array(10).fill(null).map(() => [d.shift()]);
+  // 6箇所のカード置き場（地元・箱屋・仕入・会所・街道・港）すべてに初期1枚ずつ配置
+  const road = Array(6).fill(null).map(() => [d.shift()]);
   return {
     deck: d,
     discard: [],
     road,
     players,
     turn: 0,
-    step: 1, // 1: 移動, 3: 行動, 4: 返却
+    step: 1, // 1: 移動, 3: 行動, 4: 返却, 5: 補充
     gameOver: false,
-    finalRoundTriggered: false, // 15点到達後、4番手の手番終了まで続行
+    finalRoundTriggered: false,
     refillCount: 0,
     excessCount: 0
   };
@@ -290,17 +314,14 @@ function App() {
     const nextPos = (p.pos + stepVal) % 10;
     const handAfterMove = me.hand.filter((_, idx) => idx !== cardIdx);
 
-    const tempRoad = state.road.map((arr, i) => i === p.pos ? [...arr, card] : arr);
-
-    // 🏡 地元（マス0）到達時: 所持している荷箱数 × 1塩 の基本手当（周回基本収入）を獲得
-    const boxSalary = (nextPos === 0) ? me.boxes.filter(b => b.unlocked).length : 0;
-    const newScore = me.score + boxSalary;
+    // 出発したマスが属する市場へ移動カードを表向きで配置！
+    const currMarket = getMarketIndex(p.pos);
+    const tempRoad = state.road.map((arr, i) => i === currMarket ? [...arr, card] : arr);
 
     // 🎴 補充元と枚数は、移動後に1枚ずつ選ぶ
     const newPlayers = state.players.map((pl, i) => i === 0 ? {
       ...pl,
       pos: nextPos,
-      score: newScore,
       hand: handAfterMove
     } : pl);
 
@@ -309,7 +330,6 @@ function App() {
       ...prev,
       road: tempRoad,
       players: newPlayers,
-      finalRoundTriggered: prev.finalRoundTriggered || newScore >= WIN_SCORE,
       refillCount: 0,
       step: 5
     }));
@@ -321,14 +341,15 @@ function App() {
     executeMove(cardIdx, card.num);
   };
 
-  // 場に複数枚ある場合も、1枚だけ選んで手札に加える
+  // 着地したマスが属する市場から、1枚選んで手札に加える
   const handlePickRoadCard = (cardId) => {
     if (!isHuman || state.step !== 5) return;
-    const cardsAtPosition = state.road[p.pos] || [];
+    const currentMarket = getMarketIndex(p.pos);
+    const cardsAtPosition = state.road[currentMarket] || [];
     const picked = cardsAtPosition.find(card => card.id === cardId);
     if (!picked) return;
 
-    const newRoad = state.road.map((cards, index) => index === p.pos
+    const newRoad = state.road.map((cards, index) => index === currentMarket
       ? cards.filter(card => card.id !== cardId)
       : cards);
     const newPlayers = state.players.map((pl, i) => i === 0
@@ -371,7 +392,7 @@ function App() {
     setState(prev => ({ ...prev, step: 3 }));
   };
 
-  // Step 4: 手番終了時の手札整理
+  // Step 4: 手番終了時の手札整理（余剰カードは現在地の市場へ戻す）
   const handleConfirmExcess = () => {
     if (!isHuman || state.step !== 4) return;
     if (overflowSelectedIds.length !== state.excessCount) return;
@@ -379,7 +400,8 @@ function App() {
     const returningCards = me.hand.filter(c => overflowSelectedIds.includes(c.id));
     const remainingHand = me.hand.filter(c => !overflowSelectedIds.includes(c.id));
 
-    const newRoad = state.road.map((arr, i) => i === p.pos ? [...arr, ...returningCards] : arr);
+    const currentMarket = getMarketIndex(p.pos);
+    const newRoad = state.road.map((arr, i) => i === currentMarket ? [...arr, ...returningCards] : arr);
     const newPlayers = state.players.map((pl, i) => i === 0 ? { ...pl, hand: remainingHand } : pl);
 
     setOverflowSelectedIds([]);
@@ -665,8 +687,8 @@ function App() {
             } else {
               score -= 50;
             }
-          } else if ((target === 1 || target === 7) && unlockedCount < 4) {
-            // 箱屋 (1, 7)
+          } else if ((target === 1 || target === 9) && unlockedCount < 4) {
+            // 箱屋 (1, 9: 線対称)
             const nextCost = BOX_COSTS[unlockedCount - 1];
             if (botSalt >= nextCost && curr.score < WIN_SCORE - 2) {
               score += 850 + (4 - unlockedCount) * 80;
@@ -674,12 +696,12 @@ function App() {
           } else if (REFILL_TILES.includes(target) && (curr.refillLimit || 1) < MAX_REFILL) {
             // 仕入れ所 (2, 8)
             if (botSalt >= REFILL_COST && curr.score < WIN_SCORE - 2) score += 720;
-          } else if ((target === 3 || target === 9) && unflipped) {
-            // 会所 (3, 9)
+          } else if ((target === 3 || target === 7) && unflipped) {
+            // 会所 (3, 7: 線対称)
             if (botSalt >= FLIP_COST && curr.score < WIN_SCORE - 2) score += 800;
           }
 
-          const roadStack = state.road[target] || [];
+          const roadStack = state.road[getMarketIndex(target)] || [];
           if (roadStack.length > 0) {
             score += roadStack.length * (emptyBoxes > 1 ? 80 : (emptyBoxes > 0 ? 50 : 20));
           }
@@ -704,18 +726,20 @@ function App() {
 
         const c = hList[bestIdx] || hList[0];
         const nextPos = (curr.pos + c.num) % 10;
-        const tempRoad = state.road.map((arr, i) => i === curr.pos ? [...arr, c] : arr);
+        const currMarket = getMarketIndex(curr.pos);
+        const nextMarket = getMarketIndex(nextPos);
+        const tempRoad = state.road.map((arr, i) => i === currMarket ? [...arr, c] : arr);
         let hnd = curr.hand.filter((_, idx) => idx !== bestIdx);
 
         let newDeck = state.deck;
         let newDiscard = state.discard;
         let newRoad = tempRoad;
 
-        // BOTの自動補充：強化済み上限まで、場札・山札を毎回選ぶ。
+        // BOTの自動補充：着地した市場から補充！
         const allPlayerPos = state.players.map(pl => pl.pos);
         let refillCount = 0;
         while (refillCount < (curr.refillLimit || 1)) {
-          const roadCardsAtDest = newRoad[nextPos] || [];
+          const roadCardsAtDest = newRoad[nextMarket] || [];
           const fieldPick = roadCardsAtDest.reduce((best, card) => {
             const candidateSets = findSets([...hnd, card]);
             const value = candidateSets.length > 0
@@ -729,7 +753,7 @@ function App() {
           const fieldCreatesSet = fieldPick.card && findSets([...hnd, fieldPick.card]).length > 0;
           if (fieldPick.card && (fieldCreatesSet || roadCardsAtDest.length >= 2)) {
             hnd = [...hnd, fieldPick.card];
-            newRoad = newRoad.map((arr, i) => i === nextPos
+            newRoad = newRoad.map((arr, i) => i === nextMarket
               ? arr.filter(card => card.id !== fieldPick.card.id)
               : arr);
           } else {
@@ -818,8 +842,8 @@ function App() {
             }
             return b;
           });
-        } else if (nextPos === 3 || nextPos === 9) {
-          // 会所 (3, 9): 箱裏返し (2塩)
+        } else if (nextPos === 3 || nextPos === 7) {
+          // 会所 (3, 7: 線対称): 箱裏返し (2塩)
           const curTotSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + pouchSalt;
           if (curTotSalt >= FLIP_COST && sc < WIN_SCORE - 2) {
             const target = bxs.find(b => b.unlocked && !b.flipped);
@@ -837,8 +861,8 @@ function App() {
               });
             }
           }
-        } else if (nextPos === 1 || nextPos === 7) {
-          // 箱屋 (1, 7): 箱増設 (1〜3塩)
+        } else if (nextPos === 1 || nextPos === 9) {
+          // 箱屋 (1, 9: 線対称): 箱増設 (1〜3塩)
           const uCount = bxs.filter(b => b.unlocked).length;
           if (uCount < 4) {
             const nextCost = BOX_COSTS[uCount - 1];
@@ -879,14 +903,15 @@ function App() {
           }
         }
 
-        // 行動を終えたら、余った手札を現在地に戻して5枚以下にする。
+        // 行動を終えたら、余った手札を現在地の市場に戻して5枚以下にする。
         if (hnd.length > HAND_LIMIT) {
           const excess = hnd.length - HAND_LIMIT;
           const priorities = getCardDiscardPriorities(hnd);
           const returnIds = priorities.slice(0, excess).map(item => item.card.id);
           const toReturn = hnd.filter(card => returnIds.includes(card.id));
           hnd = hnd.filter(card => !returnIds.includes(card.id));
-          newRoad = newRoad.map((arr, i) => i === nextPos ? [...arr, ...toReturn] : arr);
+          const destMarket = getMarketIndex(nextPos);
+          newRoad = newRoad.map((arr, i) => i === destMarket ? [...arr, ...toReturn] : arr);
         }
 
         const reachedGoal = sc >= WIN_SCORE;
@@ -935,11 +960,13 @@ function App() {
     ]);
   };
 
-  // マス描画
+  // マス描画（4市場＋拠点独立制・全6エリア）
   const renderTile = (tile) => {
     const occupants = state.players.filter(pl => pl.pos === tile.pos);
-    const cardsOnTile = state.road[tile.pos] || [];
+    const marketIdx = getMarketIndex(tile.pos);
+    const cardsOnTile = state.road[marketIdx] || [];
     const isCurrentPos = (p.pos === tile.pos);
+    const marketName = MARKET_NAMES[marketIdx];
 
     return h('div', {
       key: tile.pos,
@@ -957,14 +984,15 @@ function App() {
           style: { backgroundColor: pl.color }
         }, pl.id === 0 ? '自' : `B${pl.id}`))
       ),
-      h('div', { className: 'tile-cards' },
+      h('div', { className: 'tile-cards' }, [
+        h('div', { style: { fontSize: '8px', color: '#64748b', marginBottom: '1px' } }, `【${marketName}】`),
         cardsOnTile.length === 0
           ? h('span', { className: 'tile-empty' }, '空 (山札ドロー)')
           : cardsOnTile.map(c => h('span', {
               key: c.id,
               className: `tile-card-chip chip-${c.type}`
             }, `${GOODS[c.type].name}${c.num}`))
-      )
+      ])
     ]);
   };
 
@@ -988,7 +1016,9 @@ function App() {
 
     // Step 5: 場札を1枚選択
     if (state.step === 5) {
-      const cardsAtPosition = state.road[p.pos] || [];
+      const currentMarket = getMarketIndex(p.pos);
+      const cardsAtPosition = state.road[currentMarket] || [];
+      const marketName = MARKET_NAMES[currentMarket];
       return h('div', { className: 'center-hub step-3' }, [
         h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#6b46c1' } }, '🎴【補充】'),
         h('div', { style: { fontSize: '10px', color: '#4a5568' } }, `あと${me.refillLimit - state.refillCount}枚まで（現在の上限${me.refillLimit}枚）。1枚ごとに補充元を選べます`),
@@ -1006,7 +1036,7 @@ function App() {
             style: { flex: 1, fontSize: '10px', padding: '5px 3px' }
           }, '補充を終了')
         ]),
-        cardsAtPosition.length > 0 && h('div', { style: { fontSize: '10px', color: '#4a5568', marginTop: '2px' } }, '今いるマスの場札から1枚選ぶ（残りは場に残る）'),
+        cardsAtPosition.length > 0 && h('div', { style: { fontSize: '10px', color: '#4a5568', marginTop: '2px' } }, `【${marketName}】の場札から1枚選ぶ（残りは市場に残る）`),
         h('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '5px', width: '100%' } },
           cardsAtPosition.map(card => renderCard(card, () => handlePickRoadCard(card.id)))
         )

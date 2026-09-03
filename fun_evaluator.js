@@ -27,13 +27,25 @@ const BOX_COSTS   = [1, 2, 3];
 const FLIP_COST   = 2;
 const WOOD_BONUS  = 0;
 const FLIP_BONUS  = 3;
-const BOX_TILES   = [1, 7];
-const PORT_TILE   = 5;
-const GUILD_TILES = [3, 9];
-const REFILL_TILES = [2, 8];
+const BOX_TILES   = [1, 9];   // 箱屋: 1, 9 (線対称)
+const PORT_TILE   = 5;        // 港: 5
+const GUILD_TILES = [3, 7];   // 会所: 3, 7 (線対称)
+const REFILL_TILES = [2, 8];  // 仕入れ所: 2, 8 (線対称)
 const REFILL_COST = 2;
 const MAX_REFILL = 3;
 const CARD_COPIES = 4;
+
+// ── 4市場＋拠点独立制（全6エリア）のマッピング ────────
+// 0: 地元(0), 1: 箱屋市場(1,9), 2: 仕入市場(2,8), 3: 会所市場(3,7), 4: 街道市場(4,6), 5: 港(5)
+function getMarketIndex(pos) {
+  if (pos === 0) return 0;
+  if (pos === 1 || pos === 9) return 1;
+  if (pos === 2 || pos === 8) return 2;
+  if (pos === 3 || pos === 7) return 3;
+  if (pos === 4 || pos === 6) return 4;
+  if (pos === 5) return 5;
+  return 0;
+}
 
 // ── ユーティリティ ────────────────────────────────
 function createSeededRandom(seed) {
@@ -79,7 +91,8 @@ function drawSafe(count, currentDeck, currentDiscard, road = null, excludePositi
       if (disc.length > 0) { d = shuffle(disc, random); disc = []; }
       else if (newRoad) {
         const recycled = [];
-        newRoad.forEach((arr, pos) => { if (!excludePositions.includes(pos) && arr.length > 0) { recycled.push(...arr); newRoad[pos] = []; } });
+        const excludeMarkets = excludePositions.map(getMarketIndex);
+        newRoad.forEach((arr, mPos) => { if (!excludeMarkets.includes(mPos) && arr.length > 0) { recycled.push(...arr); newRoad[mPos] = []; } });
         if (recycled.length > 0) d = shuffle(recycled, random); else break;
       } else break;
     }
@@ -226,7 +239,7 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
     };
   });
 
-  const road = Array(10).fill(null).map(() => [d.shift()]);
+  const road = Array(6).fill(null).map(() => [d.shift()]);
   const state = { deck: d, discard: [], road, players, turn: 0, gameOver: false, winner: null,
     finalRoundTriggered: false  // 最終ラウンドフラグ
   };
@@ -335,7 +348,7 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       }
 
       // 街道・場札回収（空き箱が多いときはカード集めの価値が高い）
-      const roadCards = state.road[target] || [];
+      const roadCards = state.road[getMarketIndex(target)] || [];
       if (roadCards.length > 0) {
         score += roadCards.length * (emptyBoxes > 1 ? 15 : (emptyBoxes > 0 ? 10 : 4));
       }
@@ -391,8 +404,8 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       if (canNextPick) dilemmaCountThisTurn += 1;
     }
 
-    // ③ 投資分岐ジレンマ: 会所(3塩)と箱屋(1~3塩)の両方が可能な資金を持っている
-    if (totalSalt >= 3 && unflipped && unlockedBoxes.length < 4) {
+    // ③ 投資分岐ジレンマ: 会所(2塩)と箱屋(1~3塩)の両方が可能な資金を持っている
+    if (totalSalt >= 2 && unflipped && unlockedBoxes.length < 4) {
       dilemmaCountThisTurn += 1;
     }
 
@@ -407,25 +420,27 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
     const othersAtDest = state.players.filter((pl, i) => i !== state.turn && pl.pos === nextPos);
     if (othersAtDest.length > 0) tracking.pathCollisions++;
 
-    // カード争奪: マス上にカードがあり、他プレイヤーもそこを狙えたか
-    const roadCardsAtDestPre = state.road[nextPos] || [];
+    // カード争奪: マスが属する市場にカードがあり、他プレイヤーもそこを狙えたか
+    const nextMarketIdx = getMarketIndex(nextPos);
+    const currMarketIdx = getMarketIndex(curr.pos);
+    const roadCardsAtDestPre = state.road[nextMarketIdx] || [];
     if (roadCardsAtDestPre.length > 0) {
       state.players.forEach((pl, i) => {
-        if (i !== state.turn && pl.hand.some(c => (pl.pos + c.num) % 10 === nextPos)) {
+        if (i !== state.turn && pl.hand.some(c => getMarketIndex((pl.pos + c.num) % 10) === nextMarketIdx)) {
           tracking.cardContention++;
         }
       });
     }
 
-    // 移動実行
-    const tempRoad = state.road.map((arr, i) => i === curr.pos ? [...arr, chosenCard] : arr);
+    // 移動実行: 出発したマスが属する市場にカードを表向きで配置！
+    const tempRoad = state.road.map((arr, i) => i === currMarketIdx ? [...arr, chosenCard] : arr);
     let hnd = curr.hand.filter((_, idx) => idx !== bestIdx);
     let newDeck = state.deck, newDiscard = state.discard, newRoad = tempRoad;
 
-    // 補充：強化済み上限まで。BOTは役・シナジーが伸びる場札を優先し、それ以外は山札を選ぶ。
+    // 補充：着地したマスが属する市場から補充！
     let refillCount = 0;
     while (refillCount < (curr.refillLimit || 1)) {
-      const roadCardsAtDest = newRoad[nextPos] || [];
+      const roadCardsAtDest = newRoad[nextMarketIdx] || [];
       const currentHandSets = findSets(hnd);
       const currentHandSynergy = evaluateHandSynergy(hnd);
 
@@ -446,7 +461,7 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
 
       if (fieldPick.card && fieldPick.value >= 30) {
         hnd = [...hnd, fieldPick.card];
-        newRoad = newRoad.map((arr, i) => i === nextPos
+        newRoad = newRoad.map((arr, i) => i === nextMarketIdx
           ? arr.filter(card => card.id !== fieldPick.card.id)
           : arr);
       } else {
@@ -603,14 +618,15 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       }
     }
 
-    // 手番の最後に手札を5枚以下へ整理し、余りは現在地の場に戻す。
+    // 手番の最後に手札を5枚以下へ整理し、余りは現在地の市場に戻す。
     if (curr.hand.length > HAND_LIMIT) {
       const excess = curr.hand.length - HAND_LIMIT;
       const priorities = getCardDiscardPriorities(curr.hand);
       const returnIds = priorities.slice(0, excess).map(item => item.card.id);
       const toReturn = curr.hand.filter(card => returnIds.includes(card.id));
       curr.hand = curr.hand.filter(card => !returnIds.includes(card.id));
-      state.road = state.road.map((arr, i) => i === curr.pos ? [...arr, ...toReturn] : arr);
+      const currMarket = getMarketIndex(curr.pos);
+      state.road = state.road.map((arr, i) => i === currMarket ? [...arr, ...toReturn] : arr);
     }
 
     curr.boxes = bxs;
