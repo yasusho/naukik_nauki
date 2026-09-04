@@ -16,11 +16,11 @@ const CARD_TEMPLATES = {
 };
 
 const HAND_LIMIT = 5;
-const WIN_SCORE = 15;          // 目標15点
+const WIN_SCORE = 20;          // 目標15点
 const BOX_COSTS = [2, 2, 2];   // 2箱目=2塩, 3箱目=2塩, 4箱目=2塩 (初期1箱所持)
-const FLIP_COST = 2;           // 桐箱化=2塩 (2塩均一！)
+const FLIP_COST = 2;           // 高級箱化=2塩 (2塩均一！)
 const WOOD_BONUS = 0;          // 木箱出荷: 素点そのまま！
-const FLIP_BONUS = 2;          // 特製桐箱高級出荷: 素点 + 2塩！
+const FLIP_BONUS = 2;          // 特製高級箱高級出荷: 素点 + 2塩！
 
 const BOX_TILES = [1, 7];
 const PORT_TILE = 5;
@@ -150,7 +150,7 @@ const STRATEGIES = {
     }
   },
   qualityBoxes: {
-    name: '桐箱強化特化 (Quality Boxes)',
+    name: '高級箱強化特化 (Quality Boxes)',
     shouldBuyBox: (curr) => curr.boxes.filter(b => b.unlocked).length < 2 && curr.score < WIN_SCORE - 2,
     shouldFlipBox: (curr) => curr.score < WIN_SCORE - 2,
     getKeepAmount: (curr) => {

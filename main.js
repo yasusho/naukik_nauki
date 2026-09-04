@@ -449,23 +449,6 @@ function App() {
     }));
   };
 
-  // 荷箱から手札に戻す (地元でのみ。箱を開ける操作)
-  const handleUnpackBox = (boxIdx) => {
-    if (!isHuman || state.step !== 3 || p.pos !== 0) return;
-    const box = me.boxes[boxIdx];
-    if (!box || !box.cargo || !box.cargo.cards) return;
-
-    if (me.hand.length + 3 > HAND_LIMIT + 2) return;
-
-    const returnedCards = box.cargo.cards;
-    const newBoxes = me.boxes.map((b, idx) => idx === boxIdx ? { ...b, cargo: null } : b);
-    const newHand = [...me.hand, ...returnedCards];
-
-    setState(prev => ({
-      ...prev,
-      players: prev.players.map((pl, i) => i === 0 ? { ...pl, hand: newHand, boxes: newBoxes } : pl)
-    }));
-  };
   // 港で特定の荷箱だけ荷下ろし (木箱=素点, 高級箱=素点+3塩！)
   const handlePortSellBox = (boxIdx) => {
     if (!isHuman || state.step !== 3 || p.pos !== 5) return;
@@ -555,8 +538,8 @@ function App() {
     if (pos === 0 && type === 'deliver') {
       handleDeliverAll();
     }
-    // 箱屋 (1, 7): 箱の増設 (2箱目=2塩, 3箱目=3塩, 4箱目=4塩)
-    else if ((pos === 1 || pos === 7) && type === 'add_box') {
+    // 箱屋 (1, 9): 箱の増設 (2箱目=1塩, 3箱目=2塩, 4箱目=3塩)
+    else if ((pos === 1 || pos === 9) && type === 'add_box') {
       if (nextBoxCost === null || myTotalSalt < nextBoxCost) return;
       const targetIdx = me.boxes.findIndex(b => !b.unlocked);
       if (targetIdx === -1) return;
@@ -592,8 +575,8 @@ function App() {
         } : pl)
       }));
     }
-    // 会所 (3, 9): 箱を裏返す (3塩 ➔ 特製桐箱ボーナス+2塩)
-    else if ((pos === 3 || pos === 9) && type === 'flip') {
+    // 会所 (3, 7): 箱を裏返す (2塩 ➔ 高級箱ボーナス+3塩)
+    else if ((pos === 3 || pos === 7) && type === 'flip') {
       if (myTotalSalt < FLIP_COST) return;
       const targetIdx = me.boxes.findIndex(b => b.unlocked && !b.flipped);
       if (targetIdx === -1) return;
@@ -960,23 +943,24 @@ function App() {
     ]);
   };
 
-  // マス描画（4市場＋拠点独立制・全6エリア）
-  const renderTile = (tile) => {
-    const occupants = state.players.filter(pl => pl.pos === tile.pos);
-    const marketIdx = getMarketIndex(tile.pos);
-    const cardsOnTile = state.road[marketIdx] || [];
-    const isCurrentPos = (p.pos === tile.pos);
-    const marketName = MARKET_NAMES[marketIdx];
+  // 拠点タイル描画（0:地元 または 5:港）
+  const renderHubTile = (pos) => {
+    const tile = TILES[pos];
+    const occupants = state.players.filter(pl => pl.pos === pos);
+    const isCurrentPos = (p.pos === pos);
+    const marketIdx = getMarketIndex(pos);
+    const cardsAtHub = state.road[marketIdx] || [];
+    const isHome = (pos === 0);
 
     return h('div', {
-      key: tile.pos,
-      className: `tile ${tile.isFacility ? 'facility-tile' : ''} ${isCurrentPos ? 'current-tile' : ''}`
+      key: `hub-${pos}`,
+      className: `tile hub-tile hub-${pos} ${isHome ? 'tile-home' : 'tile-port'} ${isCurrentPos ? 'current-tile' : ''}`
     }, [
-      h('div', { className: 'tile-header' }, [
-        h('span', { className: 'tile-num' }, tile.pos),
-        h('span', { className: 'tile-name' }, `${tile.icon} ${tile.name}`)
+      h('div', { className: 'hub-header' }, [
+        h('div', { className: 'tile-num-badge' }, pos),
+        h('div', { className: 'tile-name' }, `${tile.icon} ${tile.name}`)
       ]),
-      tile.costText && h('div', { className: 'tile-cost-tag' }, tile.costText),
+      isCurrentPos && h('div', { className: 'current-pos-indicator' }, '現在地'),
       h('div', { className: 'tile-occupants' },
         occupants.map(pl => h('span', {
           key: pl.id,
@@ -984,129 +968,190 @@ function App() {
           style: { backgroundColor: pl.color }
         }, pl.id === 0 ? '自' : `B${pl.id}`))
       ),
-      h('div', { className: 'tile-cards' }, [
-        h('div', { style: { fontSize: '8px', color: '#64748b', marginBottom: '1px' } }, `【${marketName}】`),
-        cardsOnTile.length === 0
-          ? h('span', { className: 'tile-empty' }, '空 (山札ドロー)')
-          : cardsOnTile.map(c => h('span', {
-              key: c.id,
-              className: `tile-card-chip chip-${c.type}`
-            }, `${GOODS[c.type].name}${c.num}`))
+      cardsAtHub.length > 0 && h('div', { className: 'hub-market-area' }, [
+        h('div', { className: 'hub-market-chips' },
+          cardsAtHub.map(c => h('span', {
+            key: c.id,
+            title: `${GOODS[c.type].name} ${c.num}`,
+            onClick: (isHuman && state.step === 5 && p.pos === pos) ? () => handlePickRoadCard(c.id) : undefined,
+            className: `tile-card-chip chip-${c.type} ${(isHuman && state.step === 5 && p.pos === pos) ? 'clickable-chip' : ''}`
+          }, `${GOODS[c.type].icon}${c.num}`))
+        )
       ])
     ]);
   };
 
-  // 中央エリア（操作ハブ）
-  const renderCenter = () => {
+  // ルート上のマス描画（1〜4: 往路、6〜9: 復路）
+  const renderRouteTile = (tile, dir) => {
+    const occupants = state.players.filter(pl => pl.pos === tile.pos);
+    const isCurrentPos = (p.pos === tile.pos);
+
+    return h('div', {
+      key: `tile-${tile.pos}`,
+      className: `tile route-tile tile-${tile.pos} ${tile.isFacility ? 'facility-tile' : ''} ${isCurrentPos ? 'current-tile' : ''}`
+    }, [
+      h('div', { className: 'tile-header' }, [
+        h('span', { className: 'tile-num-badge' }, tile.pos),
+        h('span', { className: 'tile-name' }, `${tile.icon} ${tile.name}`)
+      ]),
+      isCurrentPos && h('div', { className: 'current-pos-indicator' }, '現在地'),
+      h('div', { className: 'tile-occupants' },
+        occupants.map(pl => h('span', {
+          key: pl.id,
+          className: 'occupant-badge',
+          style: { backgroundColor: pl.color }
+        }, pl.id === 0 ? '自' : `B${pl.id}`))
+      )
+    ]);
+  };
+
+  // 共有市場スロット描画（上下の施設マスに挟まれているためチップのみシンプル配置）
+  const renderMarketSlot = (marketIdx) => {
+    const cards = state.road[marketIdx] || [];
+    const currentMarket = getMarketIndex(p.pos);
+    const isMyMarket = (isHuman && state.step === 5 && currentMarket === marketIdx);
+
+    return h('div', {
+      key: `market-${marketIdx}`,
+      className: `market-slot market-pos-${marketIdx} ${isMyMarket ? 'active-market-target' : ''}`
+    }, [
+      cards.length > 0 ? h('div', { className: 'market-cards' },
+        cards.map(c => h('span', {
+          key: c.id,
+          title: `${GOODS[c.type].name} ${c.num}`,
+          onClick: isMyMarket ? () => handlePickRoadCard(c.id) : undefined,
+          className: `tile-card-chip chip-${c.type} ${isMyMarket ? 'clickable-chip' : ''}`
+        }, `${GOODS[c.type].icon}${c.num}`))
+      ) : h('span', { className: 'market-empty-dot' }, '・')
+    ]);
+  };
+
+  // 横長ボード描画
+  const renderBoard = () => {
+    return h('div', { className: 'board-container' }, [
+      h('div', { className: 'board-h-grid' }, [
+        renderHubTile(0),
+        renderRouteTile(TILES[1], 'east'),
+        renderRouteTile(TILES[2], 'east'),
+        renderRouteTile(TILES[3], 'east'),
+        renderRouteTile(TILES[4], 'east'),
+        renderHubTile(5),
+        renderMarketSlot(1),
+        renderMarketSlot(2),
+        renderMarketSlot(3),
+        renderMarketSlot(4),
+        renderRouteTile(TILES[9], 'west'),
+        renderRouteTile(TILES[8], 'west'),
+        renderRouteTile(TILES[7], 'west'),
+        renderRouteTile(TILES[6], 'west')
+      ])
+    ]);
+  };
+
+  // 手番アクションバー（スリム＆コンパクト）
+  const renderActionHub = () => {
     if (!isHuman) {
-      return h('div', { className: 'center-hub bot-turn' }, [
-        h('div', { className: 'spinner' }),
-        h('div', { style: { fontSize: '13px', fontWeight: 'bold', color: p.color } }, `${p.name} 思考中...`),
-        h('div', { style: { fontSize: '10px', color: '#718096' } }, `${TILES[p.pos].name} に滞在中`)
+      return h('div', { className: 'action-bar bot-turn' }, [
+        h('div', { className: 'spinner-sm' }),
+        h('span', { style: { fontWeight: '700', color: p.color } }, `🤖 ${p.name} 思考中...`)
       ]);
     }
 
     // Step 1: 移動
     if (state.step === 1) {
-      return h('div', { className: 'center-hub step-1' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#c53030' } }, '🚶【1. 移動】'),
-        h('div', { style: { fontSize: '10px', color: '#4a5568' } }, '手札から1枚選んでその数字進む')
+      return h('div', { className: 'action-bar step-1' }, [
+        h('span', { className: 'action-bar-label' }, '🚶 手札から1枚選んで進む')
       ]);
     }
 
-    // Step 5: 場札を1枚選択
+    // Step 5: 補充
     if (state.step === 5) {
       const currentMarket = getMarketIndex(p.pos);
       const cardsAtPosition = state.road[currentMarket] || [];
       const marketName = MARKET_NAMES[currentMarket];
-      return h('div', { className: 'center-hub step-3' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#6b46c1' } }, '🎴【補充】'),
-        h('div', { style: { fontSize: '10px', color: '#4a5568' } }, `あと${me.refillLimit - state.refillCount}枚まで（現在の上限${me.refillLimit}枚）。1枚ごとに補充元を選べます`),
-        h('div', { style: { display: 'flex', gap: '4px', width: '100%' } }, [
+      const remaining = me.refillLimit - state.refillCount;
+
+      return h('div', { className: 'action-bar step-5' }, [
+        h('div', { className: 'action-bar-left' }, [
+          h('span', { className: 'action-bar-label' }, `🎴 補充（残 ${remaining} 枚）:`),
           h('button', {
             onClick: handleDrawDeckCard,
             disabled: state.refillCount >= me.refillLimit,
-            className: 'btn btn-primary',
-            style: { flex: 1, fontSize: '10px', padding: '5px 3px' }
-          }, '🂠 山札から1枚'),
+            className: 'btn btn-primary btn-sm'
+          }, '🂠 山札から引く'),
           h('button', {
             onClick: handleFinishRefill,
             disabled: state.refillCount < 1,
-            className: 'btn btn-secondary',
-            style: { flex: 1, fontSize: '10px', padding: '5px 3px' }
-          }, '補充を終了')
+            className: 'btn btn-secondary btn-sm'
+          }, '終了')
         ]),
-        cardsAtPosition.length > 0 && h('div', { style: { fontSize: '10px', color: '#4a5568', marginTop: '2px' } }, `【${marketName}】の場札から1枚選ぶ（残りは市場に残る）`),
-        h('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '5px', width: '100%' } },
-          cardsAtPosition.map(card => renderCard(card, () => handlePickRoadCard(card.id)))
-        )
+        cardsAtPosition.length > 0 && h('div', { className: 'action-bar-chips' }, [
+          h('span', { className: 'action-bar-sub' }, '市場から:'),
+          cardsAtPosition.map(c => h('button', {
+            key: c.id,
+            onClick: () => handlePickRoadCard(c.id),
+            className: `tile-card-chip chip-${c.type} clickable-chip`,
+            style: { padding: '3px 8px', fontSize: '12px', fontWeight: '800', cursor: 'pointer', border: '1.5px solid' },
+            title: `市場から獲得: ${GOODS[c.type].name} ${c.num}`
+          }, `${GOODS[c.type].icon} ${c.num}`))
+        ])
       ]);
     }
 
-    // Step 4: 返却（旧セーブデータ互換用）
+    // Step 4: 返却
     if (state.step === 4) {
       const needed = state.excessCount;
       const current = overflowSelectedIds.length;
-      return h('div', { className: 'center-hub step-4' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#6b46c1' } }, '⚠️【手番終了・手札整理】'),
-        h('div', { style: { fontSize: '10px', color: '#4a5568' } }, `不要な手札を ${needed} 枚選んで現在地に戻す`),
+      return h('div', { className: 'action-bar step-4' }, [
+        h('span', { className: 'action-bar-label' }, `⚠️ 手札整理：${needed} 枚選んで戻す`),
         h('button', {
           disabled: current !== needed,
           onClick: handleConfirmExcess,
-          className: 'btn btn-purple',
-          style: { width: '100%', fontSize: '10px', padding: '4px 6px', marginTop: '2px' }
-        }, `現在地に戻す (${current}/${needed})`)
+          className: 'btn btn-purple btn-sm'
+        }, `戻す (${current}/${needed})`)
       ]);
     }
 
     // Step 3: 行動 (荷下ろし・荷積み・施設利用)
     if (state.step === 3) {
       const isPort = (p.pos === 5);
-      const isGuild = (p.pos === 3 || p.pos === 9);
-      const isBoxShop = (p.pos === 1 || p.pos === 7);
+      const isGuild = (p.pos === 3 || p.pos === 7);
+      const isBoxShop = (p.pos === 1 || p.pos === 9);
       const isRefillShop = REFILL_TILES.includes(p.pos);
       const isHome = (p.pos === 0);
 
-      return h('div', { className: 'center-hub step-3' }, [
-        h('div', { style: { fontSize: '12px', fontWeight: 'bold', color: '#2b8a3e', display: 'flex', justifyContent: 'space-between', width: '100%' } }, [
-          h('span', null, '⚡【行動】'),
-          h('span', { style: { fontSize: '10px', color: '#4a5568' } }, `${TILES[p.pos].name}`)
-        ]),
+      return h('div', { className: 'action-bar step-3' }, [
+        h('div', { className: 'action-bar-left' }, [
+          h('span', { className: 'action-bar-label' }, `⚡ ${TILES[p.pos].name}:`),
 
-        // 施設アクションボタン
-        h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
           // 地元(0): 納品
           isHome && (
             myTotalSalt > 0 ? (
-              h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' } }, [
+              h('div', { style: { display: 'flex', gap: '6px' } }, [
                 h('button', {
                   onClick: handleDeliverAll,
-                  className: 'btn btn-success',
-                  style: { width: '100%', fontSize: '11px', padding: '4px 4px', fontWeight: 'bold' }
-                }, `🏡 全箱一括納品 ➔ +${myTotalSalt} 🏆`),
-
+                  className: 'btn btn-success btn-sm'
+                }, `🏡 全納品 (+${myTotalSalt} 🏆)`),
                 me.boxes.map((b, idx) => (b.unlocked && b.salt > 0) ? (
                   h('button', {
                     key: idx,
                     onClick: () => handleDeliverBox(idx),
-                    className: 'btn btn-primary',
-                    style: { width: '100%', fontSize: '10px', padding: '3px 4px', background: '#0d9488' }
-                  }, `📦 荷箱${idx + 1}納品 ➔ +${b.salt} 🏆`)
+                    className: 'btn btn-primary btn-sm'
+                  }, `箱${idx + 1} (+${b.salt} 🏆)`)
                 ) : null)
               ])
-            ) : h('div', { style: { fontSize: '10px', color: '#718096', textAlign: 'center' } }, '箱の塩: 0 (港で荷下ろしして運ぼう)')
+            ) : h('span', { className: 'action-bar-sub' }, '塩なし')
           ),
 
-          // 箱屋(1, 7): 箱の増設 (2箱目=2塩, 3箱目=3塩, 4箱目=4塩)
+          // 箱屋(1, 9): 箱の増設
           isBoxShop && (
             unlockedBoxes.length < 4 ? (
               h('button', {
                 disabled: myTotalSalt < (nextBoxCost || 1),
                 onClick: () => handleFacility('add_box'),
-                className: 'btn btn-purple',
-                style: { width: '100%', fontSize: '10px', padding: '4px 4px' }
-              }, `🛖 荷箱${unlockedBoxes.length + 1}箱目を増設 (🧂${nextBoxCost}塩)`)
-            ) : h('div', { style: { fontSize: '10px', color: '#7c3aed', textAlign: 'center' } }, '📦 荷箱最大 (4箱)')
+                className: 'btn btn-purple btn-sm'
+              }, `🛖 増設 (${nextBoxCost}塩)`)
+            ) : h('span', { className: 'action-bar-sub' }, '箱最大')
           ),
 
           // 仕入れ所(2, 8): 補充上限の強化
@@ -1115,68 +1160,44 @@ function App() {
               h('button', {
                 disabled: myTotalSalt < REFILL_COST,
                 onClick: () => handleFacility('upgrade_refill'),
-                className: 'btn btn-purple',
-                style: { width: '100%', fontSize: '10px', padding: '4px 4px' }
-              }, `🧺 補充上限を${me.refillLimit}➜${me.refillLimit + 1}枚に強化 (🧂${REFILL_COST}塩)`)
-            ) : h('div', { style: { fontSize: '10px', color: '#7c3aed', textAlign: 'center' } }, '🧺 補充上限最大 (3枚)')
+                className: 'btn btn-purple btn-sm'
+              }, `🧺 補充+1 (2塩)`)
+            ) : h('span', { className: 'action-bar-sub' }, '上限最大')
           ),
 
-          // 港(5): 荷下ろし ➔ 【荷箱が塩で埋まる！】
-          isPort && (
-            h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' } }, [
-              loadedBoxesCount > 0 ? (() => {
-                let totalExpectedGain = 0;
-                me.boxes.forEach(b => {
-                  if (b.unlocked && b.cargo) {
-                    const gain = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
-                    totalExpectedGain += gain;
-                  }
-                });
-                return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' } }, [
-                  h('button', {
-                    onClick: handlePortSellAll,
-                    className: 'btn btn-primary',
-                    style: { width: '100%', fontSize: '10px', padding: '4px 4px', fontWeight: 'bold', background: '#0284c7' }
-                  }, `⚓ 全箱の荷下ろし ➔ 🧂${totalExpectedGain}塩`),
-                  me.boxes.map((b, idx) => b.cargo ? (() => {
-                    const gain = b.flipped ? (b.cargo.salt * 2) : b.cargo.salt;
-                    const bonusNote = b.flipped ? ' (高級箱2倍🔥)' : '';
-                    return h('button', {
-                      key: idx,
-                      onClick: () => handlePortSellBox(idx),
-                      className: 'btn btn-primary',
-                      style: { width: '100%', fontSize: '9px', padding: '2px 4px' }
-                    }, `📦 箱${idx+1} (${b.cargo.name}) ➔ 🧂${gain}塩${bonusNote}`);
-                  })() : null)
-                ]);
-              })() : (
-                h('div', { style: { fontSize: '10px', color: '#718096', textAlign: 'center', padding: '4px' } },
-                  mySets.length > 0
-                    ? '💡 先に手札の役を空き荷箱に積んでから荷下ろししてください'
-                    : '荷箱に荷物がありません（荷物を積んで港へ運ぼう）'
-                )
-              )
-            ])
-          ),
-
-          // 会所(3, 9): 箱を裏返す (2塩 ➔ 高級箱化: 素点+3塩！)
+          // 会所(3, 7): 高級箱化
           isGuild && (
             unflippedBoxesCount > 0 ? (
               h('button', {
                 disabled: myTotalSalt < FLIP_COST,
                 onClick: () => handleFacility('flip'),
-                className: 'btn btn-success',
-                style: { width: '100%', fontSize: '10px', padding: '4px 4px' }
-              }, `🏛️ 木箱を高級箱に強化 (素点+3塩🔥) (🧂${FLIP_COST}塩)`)
-            ) : h('div', { style: { fontSize: '10px', color: '#2b8a3e', textAlign: 'center' } }, '✨ すべての箱が高級箱です')
+                className: 'btn btn-success btn-sm'
+              }, `🏛️ 高級箱化 (2塩)`)
+            ) : h('span', { className: 'action-bar-sub' }, 'すべて高級箱')
+          ),
+
+          // 港(5): 荷下ろし
+          isPort && (
+            loadedBoxesCount > 0 ? (() => {
+              let totalExpectedGain = 0;
+              me.boxes.forEach(b => {
+                if (b.unlocked && b.cargo) {
+                  const gain = b.flipped ? (b.cargo.salt + FLIP_BONUS) : b.cargo.salt;
+                  totalExpectedGain += gain;
+                }
+              });
+              return h('button', {
+                onClick: handlePortSellAll,
+                className: 'btn btn-primary btn-sm'
+              }, `⚓ 荷下ろし (+${totalExpectedGain}塩)`);
+            })() : h('span', { className: 'action-bar-sub' }, '積荷なし')
           )
         ]),
 
         // 手番終了ボタン
         h('button', {
           onClick: handleEndTurn,
-          className: 'btn btn-dark',
-          style: { width: '100%', fontSize: '11px', padding: '5px 4px', fontWeight: 'bold', marginTop: '2px' }
+          className: 'btn btn-dark btn-sm'
         }, '🏁 手番終了')
       ]);
     }
@@ -1204,11 +1225,10 @@ function App() {
     // ヘッダー
     h('header', { className: 'header' }, [
       h('div', { className: 'header-title' }, [
-        h('span', null, '🏮 ナウキ運び'),
-        h('span', { className: `header-turn-badge ${isHuman ? 'turn-me' : 'turn-bot'}` }, `手番: ${p.name}`)
+        h('span', null, '🏮 ナウキ運び')
       ]),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, [
-        h('span', { style: { color: '#718096', fontSize: '12px' } }, `🎴 山札: ${state.deck.length}枚`),
+        h('span', { style: { color: '#64748b', fontSize: '12px', fontWeight: '600' } }, `🎴 山札: ${state.deck.length}枚`),
         h('span', { className: 'header-badge' }, `🏆 目標: ${WIN_SCORE}点`),
         state.finalRoundTriggered && h('span', { className: 'header-badge', style: { background: '#fff5eb', color: '#c05621' } }, '⚠️ 最終ラウンド（P4まで）'),
         h('a', {
@@ -1247,103 +1267,135 @@ function App() {
             ]),
             h('div', { className: 'player-info-sub' }, [
               h('span', { style: { fontWeight: 'bold', color: plTotalSalt > 0 ? '#0d9488' : '#64748b' } }, `🧂${plTotalSalt}塩`),
-              h('span', null, `📦${uBoxes.length}箱 (桐箱${fBoxes.length})`)
+              h('span', null, `📦${uBoxes.length}箱`)
             ])
+          ]),
+          // 荷箱の中身プレビュー（解放済み箱のみスッキリ表示）
+          h('div', { className: 'player-boxes-row' }, [
+            uBoxes.map((b, bIdx) => {
+              const isFlipped = b.flipped;
+              const boxLabel = isFlipped ? '高級箱' : '木箱';
+
+              if (b.salt > 0) {
+                return h('div', {
+                  key: bIdx,
+                  className: `mini-box mini-box-salt ${isFlipped ? 'mini-box-flipped' : ''}`,
+                  title: `荷箱${bIdx + 1} (${boxLabel}): 🧂${b.salt}塩`
+                }, [
+                  h('span', null, '🧂'),
+                  h('span', null, b.salt)
+                ]);
+              }
+
+              if (b.cargo) {
+                const saleGain = b.cargo.salt + (isFlipped ? FLIP_BONUS : 0);
+                return h('div', {
+                  key: bIdx,
+                  className: `mini-box mini-box-cargo chip-${b.cargo.type} ${isFlipped ? 'mini-box-flipped' : ''}`,
+                  title: `荷箱${bIdx + 1} (${boxLabel}): ${b.cargo.name} (素点${b.cargo.salt} / 売却${saleGain}塩)`
+                }, [
+                  h('span', null, GOODS[b.cargo.type]?.icon || '📦'),
+                  h('span', null, b.cargo.salt)
+                ]);
+              }
+
+              return h('div', {
+                key: bIdx,
+                className: `mini-box mini-box-empty ${isFlipped ? 'mini-box-flipped' : ''}`,
+                title: `荷箱${bIdx + 1} (${boxLabel}): 空き`
+              }, isFlipped ? '✨空' : '空');
+            }),
+            pl.boxes.length > uBoxes.length && h('span', {
+              key: 'locked-summary',
+              className: 'mini-box-locked-summary',
+              title: `未増設: ${pl.boxes.length - uBoxes.length}箱`
+            }, `+${pl.boxes.length - uBoxes.length}枠`)
           ])
         ]);
       })
     ),
 
-    // 4x3 街道マップ (10マス)
-    h('div', { className: 'board' }, [
-      renderTile(TILES[0]), renderTile(TILES[1]), renderTile(TILES[2]), renderTile(TILES[3]),
-      renderTile(TILES[9]), renderCenter(),                             renderTile(TILES[4]),
-      renderTile(TILES[8]), renderTile(TILES[7]), renderTile(TILES[6]), renderTile(TILES[5])
-    ]),
+    // 90度回転 横長街道マップ (10マス ＆ 4共有市場)
+    renderBoard(),
 
-    // あなたの手札（5枚固定）
-    h('div', { className: 'section' }, [
-      h('div', { className: 'section-title' }, [
-        h('span', null, `🎴 手札 (${me.hand.length}/${HAND_LIMIT}枚)`),
-        isHuman && state.step === 1 && h('span', { style: { color: '#9b2c2c', fontWeight: 'bold' } }, 'カードを選んで進む'),
-        isHuman && state.step === 3 && (
-          selectedSetInfo ? (
-            emptyBoxesCount > 0 ? (
-              h('button', {
-                onClick: handlePackSelectedCards,
-                className: 'btn btn-success',
-                style: { padding: '2px 8px', fontSize: '11px' }
-              }, `📦 ${selectedSetInfo.name} を荷箱に積む`)
+    // 手番アクション操作パネル
+    renderActionHub(),
+
+    // プレイヤードック（手札 ＆ 荷箱を横並び統合）
+    h('div', { className: 'player-dock' }, [
+
+      // 左側：手札（5枚）
+      h('div', { className: 'dock-panel dock-hand' }, [
+        h('div', { className: 'dock-header' }, [
+          h('span', { className: 'dock-title' }, `🎴 手札 (${me.hand.length}/${HAND_LIMIT})`),
+          isHuman && state.step === 3 && (
+            selectedSetInfo ? (
+              emptyBoxesCount > 0 ? (
+                h('button', {
+                  onClick: handlePackSelectedCards,
+                  className: 'btn btn-success btn-sm',
+                  style: { padding: '2px 8px', fontSize: '11px' }
+                }, `📦 ${selectedSetInfo.name} を積載`)
+              ) : (
+                h('span', { style: { color: '#d97706', fontSize: '11px' } }, '空き箱なし')
+              )
+            ) : selectedHandIds.length === 3 ? (
+              h('span', { style: { color: '#c92a2a', fontSize: '11px' } }, '3枚組不成立')
             ) : (
-              h('span', { style: { color: '#d97706', fontSize: '11px' } }, '⚠️ 空きの荷箱（塩も荷もない箱）がありません')
+              selectedHandIds.length > 0 && h('span', { style: { color: '#64748b', fontSize: '11px' } }, `${selectedHandIds.length}/3枚選択`)
             )
-          ) : selectedHandIds.length === 3 ? (
-            h('span', { style: { color: '#c92a2a', fontSize: '11px' } }, '⚠️ 3枚組になりません')
-          ) : (
-            h('span', { style: { color: '#666', fontSize: '11px' } },
-              selectedHandIds.length > 0
-                ? `${selectedHandIds.length}/3枚選択中`
-                : (mySets.length > 0 && emptyBoxesCount > 0)
-                  ? '手札3枚を選んで空き荷箱に積める'
-                  : '荷下ろし・施設・手番終了'
-            )
-          )
-        ),
-        isHuman && state.step === 4 && h('span', { style: { color: '#6b46c1', fontWeight: 'bold' } }, `↩️ 戻すカードを選択 (${overflowSelectedIds.length}/${state.excessCount})`)
+          ),
+          isHuman && state.step === 4 && h('span', { style: { color: '#6b46c1', fontWeight: 'bold', fontSize: '11px' } }, `戻すカード (${overflowSelectedIds.length}/${state.excessCount})`)
+        ]),
+        h('div', { className: 'card-row' },
+          me.hand.map((c, idx) => renderCard(
+            c,
+            () => {
+              if (isHuman && state.step === 1) {
+                handleMove(idx);
+              } else if (isHuman && state.step === 3) {
+                if (selectedHandIds.includes(c.id)) {
+                  setSelectedHandIds(selectedHandIds.filter(id => id !== c.id));
+                } else if (selectedHandIds.length < 3) {
+                  setSelectedHandIds([...selectedHandIds, c.id]);
+                }
+              } else if (isHuman && state.step === 4) {
+                if (overflowSelectedIds.includes(c.id)) {
+                  setOverflowSelectedIds(overflowSelectedIds.filter(id => id !== c.id));
+                } else if (overflowSelectedIds.length < state.excessCount) {
+                  setOverflowSelectedIds([...overflowSelectedIds, c.id]);
+                }
+              }
+            },
+            selectedHandIds.includes(c.id),
+            overflowSelectedIds.includes(c.id)
+          ))
+        )
       ]),
-      h('div', { className: 'card-row' },
-        me.hand.map((c, idx) => renderCard(
-          c,
-          () => {
-            if (isHuman && state.step === 1) {
-              handleMove(idx);
-            } else if (isHuman && state.step === 3) {
-              if (selectedHandIds.includes(c.id)) {
-                setSelectedHandIds(selectedHandIds.filter(id => id !== c.id));
-              } else if (selectedHandIds.length < 3) {
-                setSelectedHandIds([...selectedHandIds, c.id]);
-              }
-            } else if (isHuman && state.step === 4) {
-              if (overflowSelectedIds.includes(c.id)) {
-                setOverflowSelectedIds(overflowSelectedIds.filter(id => id !== c.id));
-              } else if (overflowSelectedIds.length < state.excessCount) {
-                setOverflowSelectedIds([...overflowSelectedIds, c.id]);
-              }
+
+      // 右側：荷箱（4スロット）
+      h('div', { className: 'dock-panel dock-cargo' }, [
+        h('div', { className: 'dock-header' }, [
+          h('span', { className: 'dock-title' }, '📦 荷箱'),
+          h('span', { className: 'level-badge-guild' }, `補充上限: ${me.refillLimit}枚`)
+        ]),
+
+        h('div', { className: 'cargo-boxes-grid' },
+          me.boxes.map((b, idx) => {
+            if (!b.unlocked) {
+              const cost = BOX_COSTS[idx - 1] || 2;
+              return h('div', { key: idx, className: 'cargo-box-card box-locked' }, [
+                h('div', { className: 'cargo-box-num' }, `箱 ${idx + 1}`),
+                h('div', { className: 'cargo-box-empty-text' }, `🔒 ${cost}塩`)
+              ]);
             }
-          },
-          selectedHandIds.includes(c.id),
-          overflowSelectedIds.includes(c.id)
-        ))
-      )
-    ]),
-
-    // あなたの個人ボード（荷箱タイル：荷物または塩を積載）
-    h('div', { className: 'section player-board-section' }, [
-      h('div', { className: 'section-title' }, [
-        h('span', null, '📦 あなたの荷車・荷箱タイル'),
-        h('div', { className: 'levels-badges' }, [
-          h('span', { className: 'level-badge-box' }, `箱の総塩量: 🧂${myTotalSalt}塩`),
-          h('span', { className: 'level-badge-guild' }, `荷箱: ${unlockedBoxes.length}/4箱 (桐箱: ${unlockedBoxes.filter(b => b.flipped).length}箱)`),
-          h('span', { className: 'level-badge-guild' }, `補充上限: ${me.refillLimit}枚`),
-        ])
-      ]),
-
-      h('div', { className: 'cargo-boxes-grid' },
-        me.boxes.map((b, idx) => {
-          if (!b.unlocked) {
-            const cost = BOX_COSTS[idx - 1] || 2;
-            return h('div', { key: idx, className: 'cargo-box-card box-locked' }, [
-              h('div', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
-              h('div', { className: 'cargo-box-empty-text' }, `🔒 未増設 (箱屋: 🧂${cost}塩)`)
-            ]);
-          }
 
           const cardClass = b.salt > 0
             ? 'box-salt-filled'
             : (b.flipped ? 'box-flipped' : 'box-normal');
 
           const badgeClass = b.flipped ? 'cargo-badge-flipped' : 'cargo-badge-normal';
-          const badgeText = b.flipped ? '✨ 高級箱 (素点+3塩🔥)' : '📦 木箱 (素点出荷)';
+          const badgeText = b.flipped ? '高級箱' : '木箱';
 
           // ① 塩が詰まっている場合
           if (b.salt > 0) {
@@ -1362,73 +1414,54 @@ function App() {
             }, [
               h('div', { className: 'cargo-box-header' }, [
                 h('span', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
-                h('span', { className: 'cargo-badge-salt-filled' }, `🧂 満杯 (${b.salt}塩)`)
+                h('span', { className: 'cargo-badge-salt-filled' }, `🧂 ${b.salt}塩`)
               ]),
-              h('div', { className: 'cargo-box-name', style: { fontWeight: 'bold', color: '#0f766e', fontSize: '13px' } }, `🧂 塩の満載: ${b.salt} 塩`),
-              isHomeNow ? (
-                h('button', {
-                  onClick: (e) => { e.stopPropagation(); handleDeliverBox(idx); },
-                  className: 'btn btn-success',
-                  style: { width: '100%', fontSize: '10px', padding: '3px 4px', fontWeight: 'bold', marginTop: '3px' }
-                }, `🏡 この箱の塩を全納品 ➔ +${b.salt} 🏆`)
-              ) : (
-                h('div', { style: { fontSize: '9px', color: '#0d9488' } }, '🏡 地元（マス0）で納品して得点化')
-              )
+              isHomeNow && h('button', {
+                onClick: (e) => { e.stopPropagation(); handleDeliverBox(idx); },
+                className: 'btn btn-success',
+                style: { width: '100%', fontSize: '12px', padding: '5px 6px', fontWeight: 'bold', marginTop: '4px' }
+              }, `🏡 納品 ➔ +${b.salt} 🏆`)
             ]);
           }
 
           // ② 荷物が積まれている場合
           if (b.cargo) {
             const isPort = (isHuman && state.step === 3 && p.pos === 5);
-            const isHome = (isHuman && state.step === 3 && p.pos === 0);
             const salePrice = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
 
             return h('div', {
               key: idx,
-              className: `cargo-box-card ${cardClass}`,
-              style: { cursor: isHome ? 'pointer' : 'default' },
-              onClick: () => {
-                if (isHome) {
-                  handleUnpackBox(idx);
-                }
-              }
+              className: `cargo-box-card ${cardClass}`
             }, [
               h('div', { className: 'cargo-box-header' }, [
                 h('span', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
                 h('span', { className: badgeClass }, badgeText)
               ]),
-              h('div', { className: 'cargo-box-name', style: { fontWeight: 'bold', color: '#0f172a' } }, b.cargo.name),
+              h('div', { className: 'cargo-box-name', style: { fontWeight: 'bold', color: '#0f172a', fontSize: '13px' } }, b.cargo.name),
               h('div', { className: 'cargo-box-vals', style: { display: 'flex', gap: '4px' } }, [
-                h('span', { className: 'cargo-val-pill', style: { background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontSize: '10px' } }, `🧂素点 ${b.cargo.salt}塩`),
-                b.flipped && h('span', { className: 'cargo-val-pill', style: { background: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' } }, `高級箱+3🔥 ➔ 計${salePrice}塩`)
+                h('span', { className: 'cargo-val-pill' }, `🧂${salePrice}塩${b.flipped ? ' (高級箱+3)' : ''}`)
               ]),
-              isPort ? (
-                h('button', {
-                  onClick: (e) => { e.stopPropagation(); handlePortSellBox(idx); },
-                  className: 'btn btn-primary',
-                  style: { marginTop: '3px', fontSize: '9px', padding: '3px 4px', fontWeight: 'bold' }
-                }, `⚓ 荷下ろし ➔ 🧂${salePrice}塩${b.flipped ? ' (+3🔥)' : ''}`)
-              ) : isHome ? (
-                h('div', { style: { fontSize: '9px', color: '#64748b' } }, '🏡 地元で箱を開けて手札に戻す')
-              ) : (
-                h('div', { style: { fontSize: '9px', color: '#64748b' } }, '🔒 荷物入り（地元まで開封不可）')
-              )
+              isPort && h('button', {
+                onClick: (e) => { e.stopPropagation(); handlePortSellBox(idx); },
+                className: 'btn btn-primary',
+                style: { marginTop: '4px', fontSize: '12px', padding: '5px 6px', fontWeight: 'bold' }
+              }, `⚓ 荷下ろし ➔ 🧂${salePrice}塩`)
             ]);
           }
 
           // ③ 空き箱の場合
           return h('div', { key: idx, className: `cargo-box-card ${cardClass} box-empty` }, [
             h('div', { className: 'cargo-box-header' }, [
-              h('span', { className: 'cargo-box-num' }, `荷箱 ${idx + 1}`),
+              h('span', { className: 'cargo-box-num' }, `箱 ${idx + 1}`),
               h('span', { className: badgeClass }, badgeText)
             ]),
-            h('div', { className: 'cargo-box-empty-text', style: { color: '#64748b', fontSize: '11px' } }, '空き（荷物または塩を積める）')
+            h('div', { className: 'cargo-box-empty-text' }, '空き')
           ]);
         })
       )
-    ])
-
-  ]);
+    ]) // dock-cargo
+  ]) // player-dock
+]); // app
 }
 
 ReactDOM.render(h(App), document.getElementById('root'));

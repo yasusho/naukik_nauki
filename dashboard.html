@@ -500,7 +500,7 @@
   <header>
     <div class="header-title">
       <h1>🏮 ナウキ運び バランス検証ダッシュボード</h1>
-      <span class="badge">純粋60枚デッキ ＆ 初期1箱 ＆ 木箱素点そのまま ＆ 桐箱+2塩モデル</span>
+      <span class="badge">純粋60枚デッキ ＆ 初期1箱 ＆ 木箱素点そのまま ＆ 高級箱ボーナスモデル</span>
     </div>
     <div class="header-actions">
       <a href="index.html" class="btn-back">← ゲーム画面に戻る</a>
@@ -520,7 +520,7 @@
         </div>
         <div class="preset-buttons">
           <button class="preset-btn active" data-preset="four_builds">4大戦略マッチ</button>
-          <button class="preset-btn" data-preset="boxes_vs_guild">荷箱 vs 桐箱</button>
+          <button class="preset-btn" data-preset="boxes_vs_guild">荷箱 vs 高級箱</button>
           <button class="preset-btn" data-preset="smart_vs_random">AI vs ランダム</button>
           <button class="preset-btn" data-preset="all_adaptive">状況適応 4人戦</button>
         </div>
@@ -537,7 +537,7 @@
           <select id="p1Strategy" class="player-setup-select">
             <option value="adaptive" selected>🎯 適応型 (Adaptive)</option>
             <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
-            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="guild_bonus">🏛️ 高級箱強化特化 (Quality Boxes)</option>
             <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
@@ -548,7 +548,7 @@
           <select id="p2Strategy" class="player-setup-select">
             <option value="adaptive">🎯 適応型 (Adaptive)</option>
             <option value="cargo_boxes" selected>📦 荷箱増設特化 (More Boxes)</option>
-            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="guild_bonus">🏛️ 高級箱強化特化 (Quality Boxes)</option>
             <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
@@ -559,7 +559,7 @@
           <select id="p3Strategy" class="player-setup-select">
             <option value="adaptive">🎯 適応型 (Adaptive)</option>
             <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
-            <option value="guild_bonus" selected>🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="guild_bonus" selected>🏛️ 高級箱強化特化 (Quality Boxes)</option>
             <option value="tea_rush">⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
@@ -570,7 +570,7 @@
           <select id="p4Strategy" class="player-setup-select">
             <option value="adaptive">🎯 適応型 (Adaptive)</option>
             <option value="cargo_boxes">📦 荷箱増設特化 (More Boxes)</option>
-            <option value="guild_bonus">🏛️ 桐箱強化特化 (Quality Boxes)</option>
+            <option value="guild_bonus">🏛️ 高級箱強化特化 (Quality Boxes)</option>
             <option value="tea_rush" selected>⚡ 快速便・ピストン輸送 (Fast Shuttle)</option>
             <option value="random">🎲 ランダム型 (Random)</option>
           </select>
@@ -608,12 +608,12 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">🏛️ 会所: 箱の桐箱化コスト (塩)</label>
+          <label class="form-label">🏛️ 会所: 箱の高級箱化コスト (塩)</label>
           <input type="number" id="flipCost" class="form-input" value="3" min="1" max="30">
         </div>
 
         <div class="form-group">
-          <label class="form-label">✨ 特製桐箱 売却ボーナス (+塩)</label>
+          <label class="form-label">✨ 高級箱 売却ボーナス (+塩)</label>
           <input type="number" id="flipBonus" class="form-input" value="2" min="1" max="30">
         </div>
 
