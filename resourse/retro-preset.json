@@ -1,0 +1,19 @@
+{
+  "inks": [
+    {
+      "id": "ink-1",
+      "color": "#20416a"
+    }
+  ],
+  "bgColor": "#fff9eb",
+  "offset": 2,
+  "noise": 20,
+  "noiseType": "grain",
+  "bleed": 0,
+  "grainSize": 5,
+  "stipple": 100,
+  "texture": 27,
+  "roller": 40,
+  "edgeDark": 100,
+  "spatter": 100
+}

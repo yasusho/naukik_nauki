@@ -30,13 +30,11 @@ const FLIP_BONUS  = 3;
 const BOX_TILES   = [1, 9];   // 箱屋: 1, 9 (線対称)
 const PORT_TILE   = 5;        // 港: 5
 const GUILD_TILES = [3, 7];   // 会所: 3, 7 (線対称)
-const REFILL_TILES = [2, 8];  // 仕入れ所: 2, 8 (線対称)
-const REFILL_COST = 2;
-const MAX_REFILL = 3;
+// マス2, 8 および 4, 6 は「街道」（施設アクションなし）
 const CARD_COPIES = 4;
 
 // ── 4市場＋拠点独立制（全6エリア）のマッピング ────────
-// 0: 地元(0), 1: 箱屋市場(1,9), 2: 仕入市場(2,8), 3: 会所市場(3,7), 4: 街道市場(4,6), 5: 港(5)
+// 0: 地元(0), 1: 箱屋市場(1,9), 2: 街道市場A(2,8), 3: 会所市場(3,7), 4: 街道市場B(4,6), 5: 港(5)
 function getMarketIndex(pos) {
   if (pos === 0) return 0;
   if (pos === 1 || pos === 9) return 1;
@@ -178,7 +176,6 @@ const STRATEGIES = {
   adaptive: {
     name: '適応型 (Adaptive)',
     shouldBuyBox:  c => c.boxes.filter(b => b.unlocked).length < 3 && c.score < WIN_SCORE - 3,
-    shouldUpgradeRefill: c => c.refillLimit < MAX_REFILL && c.score < WIN_SCORE - 2,
     shouldFlipBox: c => c.score < WIN_SCORE - 2,
     getKeepAmount: c => {
       const u = c.boxes.filter(b => b.unlocked).length;
@@ -191,20 +188,17 @@ const STRATEGIES = {
   moreBoxes: {
     name: '荷箱増設特化 (More Boxes)',
     shouldBuyBox:  c => c.boxes.filter(b => b.unlocked).length < 4 && c.score < WIN_SCORE - 2,
-    shouldUpgradeRefill: c => c.refillLimit < MAX_REFILL && c.score < WIN_SCORE - 2,
     shouldFlipBox: c => c.boxes.filter(b => b.unlocked).length >= 2 && c.score < WIN_SCORE - 2,
     getKeepAmount: c => {
       const u = c.boxes.filter(b => b.unlocked).length;
       if (c.score + (c.boxes.reduce((s, b) => s + (b.salt || 0), 0) + c.pouchSalt) >= WIN_SCORE) return 0;
       if (u < 4 && c.score < WIN_SCORE - 2) return BOX_COSTS[u - 1];
-      if (c.refillLimit < MAX_REFILL) return REFILL_COST;
       return 0;
     }
   },
   qualityBoxes: {
     name: '桐箱強化特化 (Quality Boxes)',
     shouldBuyBox:  c => c.boxes.filter(b => b.unlocked).length < 2 && c.score < WIN_SCORE - 2,
-    shouldUpgradeRefill: c => c.refillLimit < MAX_REFILL && c.score < WIN_SCORE - 2,
     shouldFlipBox: c => c.score < WIN_SCORE - 2,
     getKeepAmount: c => {
       if (c.score + (c.boxes.reduce((s, b) => s + (b.salt || 0), 0) + c.pouchSalt) >= WIN_SCORE) return 0;
@@ -215,7 +209,6 @@ const STRATEGIES = {
   fastShuttle: {
     name: '快速便 (Fast Shuttle)',
     shouldBuyBox:  () => false,
-    shouldUpgradeRefill: () => false,
     shouldFlipBox: () => false,
     getKeepAmount: () => 0
   }
@@ -263,7 +256,7 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
   };
 
   let turns = 0;
-  const maxTurns = 80;
+  const maxTurns = 120;  // 最大30巡（正常決着を完全に保証）
 
   while (!state.gameOver && turns < maxTurns) {
     const curr = state.players[state.turn];
@@ -330,18 +323,13 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
           score -= 15;
         }
       } else if (BOX_TILES.includes(target) && unlockedBoxes.length < 4) {
-        // 箱屋 (1, 7): 増設
+        // 箱屋 (1, 9): 増設（箱が増えると補充枚数も増えるため極めて高価値）
         const cost = BOX_COSTS[unlockedBoxes.length - 1];
         if (curr.strat.shouldBuyBox(curr) && totalSalt >= cost) {
-          score += 85 + (4 - unlockedBoxes.length) * 10;
-        }
-      } else if (REFILL_TILES.includes(target) && curr.refillLimit < MAX_REFILL) {
-        // 仕入れ所 (2, 8): 補充上限強化
-        if (curr.strat.shouldUpgradeRefill(curr) && totalSalt >= REFILL_COST) {
-          score += 80;
+          score += 100 + (4 - unlockedBoxes.length) * 15;
         }
       } else if (GUILD_TILES.includes(target) && unflipped) {
-        // 会所 (3, 9): 高級箱化
+        // 会所 (3, 7): 高級箱化
         if (curr.strat.shouldFlipBox(curr) && totalSalt >= FLIP_COST) {
           score += 90;
         }
@@ -437,9 +425,10 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
     let hnd = curr.hand.filter((_, idx) => idx !== bestIdx);
     let newDeck = state.deck, newDiscard = state.discard, newRoad = tempRoad;
 
-    // 補充：着地したマスが属する市場から補充！
+    // 補充：着地したマスが属する市場から補充！（上限＝所持箱数）
     let refillCount = 0;
-    while (refillCount < (curr.refillLimit || 1)) {
+    const maxRefill = curr.boxes.filter(b => b.unlocked).length;
+    while (refillCount < maxRefill) {
       const roadCardsAtDest = newRoad[nextMarketIdx] || [];
       const currentHandSets = findSets(hnd);
       const currentHandSynergy = evaluateHandSynergy(hnd);
@@ -507,11 +496,38 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
         const ids = s.trio.map(c => c.id);
         curr.hand = curr.hand.filter(c => !ids.includes(c.id));
         tracking.setsFormed[state.turn]++;
+        // 荷積み直後の3枚補充（現在地市場または山札から1枚ずつ選んで補充）
+        const currMarketIdx = getMarketIndex(curr.pos);
+        for (let r = 0; r < 3; r++) {
+          const roadCardsAtDest = state.road[currMarketIdx] || [];
+          const currentHandSets = findSets(curr.hand);
+          const currentHandSynergy = evaluateHandSynergy(curr.hand);
 
-        const drawRes = drawSafe(3, state.deck, state.discard, state.road, allPlayerPos, random);
-        curr.hand = [...curr.hand, ...drawRes.drawn];
-        state.deck = drawRes.newDeck; state.discard = drawRes.newDiscard;
-        state.road = drawRes.newRoad || state.road;
+          const fieldPick = roadCardsAtDest.reduce((best, card) => {
+            const candidateSets = findSets([...curr.hand, card]);
+            const candidateSynergy = evaluateHandSynergy([...curr.hand, card]);
+            let val = 0;
+            if (candidateSets.length > currentHandSets.length) {
+              val = 100 + Math.max(...candidateSets.map(s => s.info.salt));
+            } else if (candidateSynergy > currentHandSynergy) {
+              val = 30 + (candidateSynergy - currentHandSynergy);
+            }
+            return val > best.value ? { card, value: val } : best;
+          }, { card: null, value: -1 });
+
+          if (fieldPick.card && fieldPick.value >= 30) {
+            curr.hand = [...curr.hand, fieldPick.card];
+            state.road = state.road.map((arr, i) => i === currMarketIdx
+              ? arr.filter(card => card.id !== fieldPick.card.id)
+              : arr);
+          } else {
+            const res = drawSafe(1, state.deck, state.discard, state.road, allPlayerPos, random);
+            if (res.drawn.length === 0) break;
+            curr.hand = [...curr.hand, ...res.drawn];
+            state.deck = res.newDeck; state.discard = res.newDiscard;
+            state.road = res.newRoad || state.road;
+          }
+        }
       } else break;
     }
 
@@ -597,25 +613,6 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
           }
         }
       }
-    } else if (REFILL_TILES.includes(curr.pos)) {
-      // 仕入れ所: 塩2で補充上限を+1（最大3枚）
-      const curTot = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;
-      const wantsUpgrade = curr.strat.shouldUpgradeRefill ? curr.strat.shouldUpgradeRefill(curr) : true;
-      if (refillLimit < MAX_REFILL && curTot >= REFILL_COST && wantsUpgrade) {
-        tracking.facilitySpendings[state.turn] += REFILL_COST;
-        refillLimit += 1;
-        let needed = REFILL_COST;
-        if (curr.pouchSalt >= needed) { curr.pouchSalt -= needed; needed = 0; }
-        else { needed -= curr.pouchSalt; curr.pouchSalt = 0; }
-        bxs = bxs.map(b => {
-          if (needed > 0 && b.unlocked && b.salt > 0) {
-            if (b.salt >= needed) { const rem = b.salt - needed; needed = 0; return { ...b, salt: rem }; }
-            needed -= b.salt;
-            return { ...b, salt: 0 };
-          }
-          return b;
-        });
-      }
     }
 
     // 手番の最後に手札を5枚以下へ整理し、余りは現在地の市場に戻す。
@@ -630,7 +627,7 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
     }
 
     curr.boxes = bxs;
-    curr.refillLimit = refillLimit;
+    curr.refillLimit = bxs.filter(b => b.unlocked).length;
 
     // スコア履歴とリードチェンジ
     state.players.forEach((pl, i) => { tracking.scoreHistory[i].push(pl.score); });

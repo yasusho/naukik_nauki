@@ -33,14 +33,11 @@ const CARD_TEMPLATES = {
 
 const HAND_LIMIT = 5;
 
-// マップ定義: 0: 地元, 1/7: 箱屋, 2/8: 仕入れ所, 3/9: 会所, 5: 港 (10マス)
+// マップ定義: 0: 地元, 1/9: 箱屋, 2/8: 街道, 3/7: 会所, 5: 港, 4/6: 街道 (10マス)
 const BOX_TILES = [1, 7];
 const PORT_TILE = 5;
 const GUILD_TILES = [3, 9];
-const REFILL_TILES = [2, 8];
-const BOX_COSTS = [2, 3, 4];
-const REFILL_COST = 2;
-const MAX_REFILL = 3;
+const BOX_COSTS = [1, 2, 3];
 
 const CARD_COPIES = 4;
 
@@ -290,7 +287,6 @@ const AI_STRATEGIES = {
     '#38bdf8',
     { salt: 15, tea: 1.2, rice: 1.2, cloth: 1.2 },
     {
-      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
       getTargetBonus(target, player) {
         const unflipped = player.boxes.find(b => b.unlocked && !b.flipped);
         const hasFlipped = player.boxes.some(b => b.unlocked && b.flipped);
@@ -314,7 +310,6 @@ const AI_STRATEGIES = {
     '#a78bfa',
     { salt: 14, tea: 1.0, rice: 1.0, cloth: 1.5 },
     {
-      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
       getTargetBonus(target, player, state, config) {
         const unlockedCount = player.boxes.filter(b => b.unlocked).length;
         const costs = (config && config.boxCosts) || BOX_COSTS;
@@ -330,7 +325,6 @@ const AI_STRATEGIES = {
     '#34d399',
     { salt: 16, tea: 1.0, rice: 1.2, cloth: 1.2 },
     {
-      shouldUpgradeRefill(player) { return player.score < WIN_SCORE - 2; },
       getTargetBonus(target, player) {
         const unflipped = player.boxes.find(b => b.unlocked && !b.flipped);
         if (GUILD_TILES.includes(target) && unflipped && getPlayerTotalSalt(player) >= 3) return 380;
@@ -345,7 +339,6 @@ const AI_STRATEGIES = {
     '#fbbf24',
     { salt: 22, tea: 1.5, rice: 1.0, cloth: 1.0 },
     {
-      shouldUpgradeRefill() { return false; },
       getTargetBonus() {
         return 0;
       }
@@ -419,10 +412,26 @@ function runSingleGame(botStrategies, config) {
         const usedIds = s.trio.map(c => c.id);
         curr.hand = curr.hand.filter(c => !usedIds.includes(c.id));
         const allPos = state.players.map(p => p.pos);
-        const drawRes = drawSafe(3, state.deck, state.discard, state.road, allPos);
-        curr.hand.push(...drawRes.drawn);
-        state.deck = drawRes.newDeck;
-        state.discard = drawRes.newDiscard;
+        for (let r = 0; r < 3; r++) {
+          const roadCards = state.road[curr.pos] || [];
+          const fieldPick = roadCards.reduce((best, card) => {
+            const value = evaluateHandValue([...curr.hand, card], curr.strategy.weights);
+            return value > best.value ? { card, value } : best;
+          }, { card: null, value: -1 });
+
+          const fieldCreatesSet = fieldPick.card && findSets([...curr.hand, fieldPick.card]).length > 0;
+          if (fieldPick.card && (fieldCreatesSet || roadCards.length >= 2)) {
+            curr.hand.push(fieldPick.card);
+            state.road[curr.pos] = roadCards.filter(card => card.id !== fieldPick.card.id);
+          } else {
+            const res = drawSafe(1, state.deck, state.discard, state.road, [...allPos, curr.pos]);
+            if (res.drawn.length === 0) break;
+            curr.hand.push(...res.drawn);
+            state.deck = res.newDeck;
+            state.discard = res.newDiscard;
+            state.road = res.newRoad || state.road;
+          }
+        }
       } else break;
     }
   }
@@ -452,9 +461,10 @@ function runSingleGame(botStrategies, config) {
       curr.pos = nextPos;
     }
 
-    // 強化済み上限まで。1枚ごとに場札・山札を選び、役ができたら補充を止める。
+    // 所持箱数まで補充。1枚ごとに場札・山札を選び、役ができたら補充を止める。
     let refillCount = 0;
-    while (refillCount < (curr.refillLimit || 1)) {
+    const maxRefill = curr.boxes.filter(b => b.unlocked).length;
+    while (refillCount < maxRefill) {
       const roadCards = state.road[curr.pos] || [];
       const fieldPick = roadCards.reduce((best, card) => {
         const value = evaluateHandValue([...curr.hand, card], curr.strategy.weights);
@@ -596,25 +606,8 @@ function runSingleGame(botStrategies, config) {
         const target = curr.boxes.find(b => !b.unlocked);
         if (target) target.unlocked = true;
       }
-    } else if (REFILL_TILES.includes(curr.pos)) {
-      // 仕入れ所: 塩2で補充上限を+1（最大3枚）
-      const curTot = curr.boxes.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;
-      const wantsUpgrade = bot.shouldUpgradeRefill ? bot.shouldUpgradeRefill(curr) : true;
-      if ((curr.refillLimit || 1) < MAX_REFILL && curTot >= REFILL_COST && wantsUpgrade) {
-        curr.refillLimit = (curr.refillLimit || 1) + 1;
-        let needed = REFILL_COST;
-        if (curr.pouchSalt >= needed) { curr.pouchSalt -= needed; needed = 0; }
-        else { needed -= curr.pouchSalt; curr.pouchSalt = 0; }
-        curr.boxes = curr.boxes.map(b => {
-          if (needed > 0 && b.unlocked && b.salt > 0) {
-            if (b.salt >= needed) { const rem = b.salt - needed; needed = 0; return { ...b, salt: rem }; }
-            needed -= b.salt;
-            return { ...b, salt: 0 };
-          }
-          return b;
-        });
-      }
     }
+    curr.refillLimit = curr.boxes.filter(b => b.unlocked).length;
 
     packToBoxes(curr);
 

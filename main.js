@@ -31,30 +31,30 @@ const CARD_TEMPLATES = {
   ]
 };
 
-// 10マス完全交互配置: 0地元 ➔ 1箱屋 ➔ 2仕入れ所 ➔ 3会所 ➔ 4街道 ➔ 5港 ➔ 6街道 ➔ 7箱屋 ➔ 8仕入れ所 ➔ 9会所
+// 10マス完全交互配置: 0地元 ➔ 1箱屋 ➔ 2街道 ➔ 3会所 ➔ 4街道 ➔ 5港 ➔ 6街道 ➔ 7会所 ➔ 8街道 ➔ 9箱屋
 // 線対称・鏡像配置（4市場＋拠点独立制・全6エリア）
-// 0:地元 ➔ 1:箱屋 ➔ 2:仕入 ➔ 3:会所 ➔ 4:街道 ➔ 5:港 ➔ 6:街道 ➔ 7:会所 ➔ 8:仕入 ➔ 9:箱屋
+// 0:地元 ➔ 1:箱屋 ➔ 2:街道A ➔ 3:会所 ➔ 4:街道B ➔ 5:港 ➔ 6:街道B ➔ 7:会所 ➔ 8:街道A ➔ 9:箱屋
 const TILES = [
   { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品・得点化', costText: '箱選択納品' },
-  { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
-  { pos: 2, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
+  { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩 (上限もUP)' },
+  { pos: 2, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 3, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 4, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 5, name: '港',   icon: '⚓', isFacility: true, short: '換金', costText: '木箱:素点 / 高級箱:素点+3塩🔥' },
   { pos: 6, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 7, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
-  { pos: 8, name: '仕入れ所', icon: '🧺', isFacility: true, short: '補充強化', costText: '補充上限+1: 2塩' },
-  { pos: 9, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩' },
+  { pos: 8, name: '街道', icon: '🛣️', isFacility: false },
+  { pos: 9, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩 (上限もUP)' },
 ];
 
 // 4市場＋拠点独立制（全6エリア）
-// 0: 地元(0), 1: 箱屋市場(1,9), 2: 仕入市場(2,8), 3: 会所市場(3,7), 4: 街道市場(4,6), 5: 港(5)
+// 0: 地元(0), 1: 箱屋市場(1,9), 2: 街道市場A(2,8), 3: 会所市場(3,7), 4: 街道市場B(4,6), 5: 港(5)
 const MARKET_NAMES = [
   '地元カード置き場',
   '箱屋市場',
-  '仕入市場',
+  '街道市場A',
   '会所市場',
-  '街道市場',
+  '街道市場B',
   '港カード置き場'
 ];
 
@@ -80,9 +80,7 @@ const WIN_SCORE = 20;          // 目標20点 (充実の2〜3周回エンジン�
 const BOX_COSTS = [1, 2, 3];   // 2箱目: 1塩, 3箱目: 2塩, 4箱目: 3塩 (初期1箱所持)
 const FLIP_COST = 2;           // 高級箱化コスト: 2塩
 const FLIP_BONUS = 3;          // 高級箱出荷ボーナス: 素点 + 3塩
-const REFILL_TILES = [2, 8];   // 仕入れ所: 補充上限を強化
-const REFILL_COST = 2;         // 補充上限+1のコスト
-const MAX_REFILL = 3;          // 補充上限は最大3枚
+// マス2, 8 および 4, 6 は「街道」（施設アクションなし）
 const CARD_COPIES = 4;         // 各数字4枚（3色×5数字×4枚 ＝ 60枚の純粋デッキ）
 
 function createDeck() {
@@ -289,6 +287,7 @@ function App() {
   const mySets = useMemo(() => findSets(me.hand), [me.hand]);
 
   const unlockedBoxes = useMemo(() => me.boxes.filter(b => b.unlocked), [me.boxes]);
+  const myRefillLimit = unlockedBoxes.length;
   const emptyBoxesCount = useMemo(() => me.boxes.filter(b => b.unlocked && !b.cargo && b.salt === 0).length, [me.boxes]);
   const loadedBoxesCount = useMemo(() => me.boxes.filter(b => b.unlocked && b.cargo).length, [me.boxes]);
   const unflippedBoxesCount = useMemo(() => me.boxes.filter(b => b.unlocked && !b.flipped).length, [me.boxes]);
@@ -331,6 +330,8 @@ function App() {
       road: tempRoad,
       players: newPlayers,
       refillCount: 0,
+      refillTarget: myRefillLimit,
+      isPackingRefill: false,
       step: 5
     }));
   };
@@ -357,17 +358,19 @@ function App() {
       : pl);
 
     const nextRefillCount = state.refillCount + 1;
+    const currentTarget = state.refillTarget || myRefillLimit;
     setState(prev => ({
       ...prev,
       road: newRoad,
       players: newPlayers,
       refillCount: nextRefillCount,
-      step: nextRefillCount >= me.refillLimit ? 3 : 5
+      step: nextRefillCount >= currentTarget ? 3 : 5
     }));
   };
 
   const handleDrawDeckCard = () => {
-    if (!isHuman || state.step !== 5 || state.refillCount >= me.refillLimit) return;
+    const currentTarget = state.refillTarget || myRefillLimit;
+    if (!isHuman || state.step !== 5 || state.refillCount >= currentTarget) return;
     const allPlayerPos = state.players.map(pl => pl.pos);
     const res = drawSafe(1, state.deck, state.discard, state.road, allPlayerPos);
     if (res.drawn.length === 0) return;
@@ -383,7 +386,7 @@ function App() {
       road: res.newRoad || prev.road,
       players: newPlayers,
       refillCount: nextRefillCount,
-      step: nextRefillCount >= me.refillLimit ? 3 : 5
+      step: nextRefillCount >= currentTarget ? 3 : 5
     }));
   };
 
@@ -416,7 +419,7 @@ function App() {
     }));
   };
 
-  // 手札3枚を空き荷箱に積む (荷積み ➔ 【3枚即時補充！】)
+  // 手札3枚を空き荷箱に積む (荷積み ➔ 【3枚補充フェーズへ！】)
   const handlePackSelectedCards = () => {
     if (!selectedSetInfo || state.step !== 3) return;
     const emptyIdx = me.boxes.findIndex(b => b.unlocked && !b.cargo && b.salt === 0);
@@ -425,16 +428,11 @@ function App() {
     const ids = selectedCards.map(c => c.id);
     const remainingHand = me.hand.filter(c => !ids.includes(c.id));
 
-    // 🎴 面子公開時の即時3枚ドロー！
-    const allPlayerPos = state.players.map(pl => pl.pos);
-    const drawRes = drawSafe(3, state.deck, state.discard, state.road, allPlayerPos);
-    const newHand = [...remainingHand, ...drawRes.drawn];
-
     const newPlayers = state.players.map((pl, i) => {
       if (i !== 0) return pl;
       return {
         ...pl,
-        hand: newHand,
+        hand: remainingHand,
         boxes: pl.boxes.map((b, bI) => bI === emptyIdx ? { ...b, cargo: selectedSetInfo } : b)
       };
     });
@@ -442,10 +440,11 @@ function App() {
     setSelectedHandIds([]);
     setState(prev => ({
       ...prev,
-      deck: drawRes.newDeck,
-      discard: drawRes.newDiscard,
-      road: drawRes.newRoad || prev.road,
-      players: newPlayers
+      players: newPlayers,
+      refillCount: 0,
+      refillTarget: 3,
+      isPackingRefill: true,
+      step: 5
     }));
   };
 
@@ -554,24 +553,8 @@ function App() {
         players: prev.players.map((pl, i) => i === 0 ? {
           ...pl,
           boxes: newBoxes,
-          pouchSalt: newPouch
-        } : pl)
-      }));
-    }
-    // 仕入れ所 (2, 8): 補充上限を1枚増やす (最大3枚)
-    else if (REFILL_TILES.includes(pos) && type === 'upgrade_refill') {
-      if (me.refillLimit >= MAX_REFILL || myTotalSalt < REFILL_COST) return;
-
-      const { newBoxes, newPouch, success } = deductPlayerSalt(me, REFILL_COST);
-      if (!success) return;
-
-      setState(prev => ({
-        ...prev,
-        players: prev.players.map((pl, i) => i === 0 ? {
-          ...pl,
-          boxes: newBoxes,
           pouchSalt: newPouch,
-          refillLimit: (pl.refillLimit || 1) + 1
+          refillLimit: newBoxes.filter(b => b.unlocked).length
         } : pl)
       }));
     }
@@ -671,14 +654,11 @@ function App() {
               score -= 50;
             }
           } else if ((target === 1 || target === 9) && unlockedCount < 4) {
-            // 箱屋 (1, 9: 線対称)
+            // 箱屋 (1, 9: 線対称) - 箱が増えるとドロー上限も増えるため極めて高価値
             const nextCost = BOX_COSTS[unlockedCount - 1];
             if (botSalt >= nextCost && curr.score < WIN_SCORE - 2) {
-              score += 850 + (4 - unlockedCount) * 80;
+              score += 950 + (4 - unlockedCount) * 100;
             }
-          } else if (REFILL_TILES.includes(target) && (curr.refillLimit || 1) < MAX_REFILL) {
-            // 仕入れ所 (2, 8)
-            if (botSalt >= REFILL_COST && curr.score < WIN_SCORE - 2) score += 720;
           } else if ((target === 3 || target === 7) && unflipped) {
             // 会所 (3, 7: 線対称)
             if (botSalt >= FLIP_COST && curr.score < WIN_SCORE - 2) score += 800;
@@ -718,10 +698,11 @@ function App() {
         let newDiscard = state.discard;
         let newRoad = tempRoad;
 
-        // BOTの自動補充：着地した市場から補充！
+        // BOTの自動補充：着地した市場から補充！（上限＝所持箱数）
         const allPlayerPos = state.players.map(pl => pl.pos);
         let refillCount = 0;
-        while (refillCount < (curr.refillLimit || 1)) {
+        const botMaxRefill = curr.boxes.filter(b => b.unlocked).length;
+        while (refillCount < botMaxRefill) {
           const roadCardsAtDest = newRoad[nextMarket] || [];
           const fieldPick = roadCardsAtDest.reduce((best, card) => {
             const candidateSets = findSets([...hnd, card]);
@@ -778,11 +759,33 @@ function App() {
             const ids = s.trio.map(card => card.id);
             hnd = hnd.filter(card => !ids.includes(card.id));
 
-            const drawRes = drawSafe(3, newDeck, newDiscard, newRoad, allPlayerPos);
-            hnd = [...hnd, ...drawRes.drawn];
-            newDeck = drawRes.newDeck;
-            newDiscard = drawRes.newDiscard;
-            newRoad = drawRes.newRoad || newRoad;
+            // 荷積み直後の3枚補充（現在地市場または山札から1枚ずつ選んで補充）
+            const currMarket = getMarketIndex(nextPos);
+            for (let r = 0; r < 3; r++) {
+              const roadCardsAtDest = newRoad[currMarket] || [];
+              const fieldPick = roadCardsAtDest.reduce((best, card) => {
+                const candidateSets = findSets([...hnd, card]);
+                const value = candidateSets.length > 0
+                  ? Math.max(...candidateSets.map(set => set.info.salt))
+                  : 0;
+                return value > best.value ? { card, value } : best;
+              }, { card: null, value: -1 });
+
+              const fieldCreatesSet = fieldPick.card && findSets([...hnd, fieldPick.card]).length > 0;
+              if (fieldPick.card && (fieldCreatesSet || roadCardsAtDest.length >= 2)) {
+                hnd = [...hnd, fieldPick.card];
+                newRoad = newRoad.map((arr, i) => i === currMarket
+                  ? arr.filter(card => card.id !== fieldPick.card.id)
+                  : arr);
+              } else {
+                const res = drawSafe(1, newDeck, newDiscard, newRoad, [...allPlayerPos, nextPos]);
+                if (res.drawn.length === 0) break;
+                hnd = [...hnd, ...res.drawn];
+                newDeck = res.newDeck;
+                newDiscard = res.newDiscard;
+                newRoad = res.newRoad || newRoad;
+              }
+            }
           } else break;
         }
 
@@ -867,24 +870,8 @@ function App() {
               }
             }
           }
-        } else if (REFILL_TILES.includes(nextPos)) {
-          // 仕入れ所: 塩2で補充上限を+1（最大3枚）
-          const curTotSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + pouchSalt;
-          if (refillLimit < MAX_REFILL && curTotSalt >= REFILL_COST) {
-            refillLimit += 1;
-            let rem = REFILL_COST;
-            if (pouchSalt >= rem) { pouchSalt -= rem; rem = 0; }
-            else { rem -= pouchSalt; pouchSalt = 0; }
-            bxs = bxs.map(b => {
-              if (rem > 0 && b.unlocked && b.salt > 0) {
-                if (b.salt >= rem) { const sRem = b.salt - rem; rem = 0; return { ...b, salt: sRem }; }
-                rem -= b.salt;
-                return { ...b, salt: 0 };
-              }
-              return b;
-            });
-          }
         }
+        refillLimit = bxs.filter(b => b.unlocked).length;
 
         // 行動を終えたら、余った手札を現在地の市場に戻して5枚以下にする。
         if (hnd.length > HAND_LIMIT) {
@@ -1068,18 +1055,21 @@ function App() {
     if (state.step === 5) {
       const currentMarket = getMarketIndex(p.pos);
       const cardsAtPosition = state.road[currentMarket] || [];
-      const marketName = MARKET_NAMES[currentMarket];
-      const remaining = me.refillLimit - state.refillCount;
+      const currentTarget = state.refillTarget || myRefillLimit;
+      const remaining = currentTarget - state.refillCount;
+      const labelText = state.isPackingRefill
+        ? `📦 荷積み補充（残 ${remaining} 枚）:`
+        : `🎴 補充（残 ${remaining} 枚）:`;
 
       return h('div', { className: 'action-bar step-5' }, [
         h('div', { className: 'action-bar-left' }, [
-          h('span', { className: 'action-bar-label' }, `🎴 補充（残 ${remaining} 枚）:`),
+          h('span', { className: 'action-bar-label' }, labelText),
           h('button', {
             onClick: handleDrawDeckCard,
-            disabled: state.refillCount >= me.refillLimit,
+            disabled: state.refillCount >= currentTarget,
             className: 'btn btn-primary btn-sm'
           }, '🂠 山札から引く'),
-          h('button', {
+          !state.isPackingRefill && h('button', {
             onClick: handleFinishRefill,
             disabled: state.refillCount < 1,
             className: 'btn btn-secondary btn-sm'
@@ -1117,7 +1107,6 @@ function App() {
       const isPort = (p.pos === 5);
       const isGuild = (p.pos === 3 || p.pos === 7);
       const isBoxShop = (p.pos === 1 || p.pos === 9);
-      const isRefillShop = REFILL_TILES.includes(p.pos);
       const isHome = (p.pos === 0);
 
       return h('div', { className: 'action-bar step-3' }, [
@@ -1152,17 +1141,6 @@ function App() {
                 className: 'btn btn-purple btn-sm'
               }, `🛖 増設 (${nextBoxCost}塩)`)
             ) : h('span', { className: 'action-bar-sub' }, '箱最大')
-          ),
-
-          // 仕入れ所(2, 8): 補充上限の強化
-          isRefillShop && (
-            me.refillLimit < MAX_REFILL ? (
-              h('button', {
-                disabled: myTotalSalt < REFILL_COST,
-                onClick: () => handleFacility('upgrade_refill'),
-                className: 'btn btn-purple btn-sm'
-              }, `🧺 補充+1 (2塩)`)
-            ) : h('span', { className: 'action-bar-sub' }, '上限最大')
           ),
 
           // 会所(3, 7): 高級箱化
@@ -1377,7 +1355,7 @@ function App() {
       h('div', { className: 'dock-panel dock-cargo' }, [
         h('div', { className: 'dock-header' }, [
           h('span', { className: 'dock-title' }, '📦 荷箱'),
-          h('span', { className: 'level-badge-guild' }, `補充上限: ${me.refillLimit}枚`)
+          h('span', { className: 'level-badge-guild' }, `補充上限: ${myRefillLimit}枚`)
         ]),
 
         h('div', { className: 'cargo-boxes-grid' },
