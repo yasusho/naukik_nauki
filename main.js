@@ -36,7 +36,7 @@ const CARD_TEMPLATES = {
 // 0:地元 ➔ 1:箱屋 ➔ 2:街道A ➔ 3:会所 ➔ 4:街道B ➔ 5:港 ➔ 6:街道B ➔ 7:会所 ➔ 8:街道A ➔ 9:箱屋
 const TILES = [
   { pos: 0, name: '地元', icon: '🏡', isFacility: true, short: '納品・得点化', costText: '箱選択納品' },
-  { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩 (上限もUP)' },
+  { pos: 1, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・3・7塩 (上限もUP)' },
   { pos: 2, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 3, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 4, name: '街道', icon: '🛣️', isFacility: false },
@@ -44,7 +44,7 @@ const TILES = [
   { pos: 6, name: '街道', icon: '🛣️', isFacility: false },
   { pos: 7, name: '会所', icon: '🏛️', isFacility: true, short: '強化', costText: '高級箱化: 2塩' },
   { pos: 8, name: '街道', icon: '🛣️', isFacility: false },
-  { pos: 9, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・2・3塩 (上限もUP)' },
+  { pos: 9, name: '箱屋', icon: '🛖', isFacility: true, short: '増設', costText: '箱増設: 1・3・7塩 (上限もUP)' },
 ];
 
 // 4市場＋拠点独立制（全6エリア）
@@ -77,7 +77,7 @@ const PLAYERS_DEF = [
 
 const HAND_LIMIT = 5;          // 手札5枚固定
 const WIN_SCORE = 20;          // 目標20点 (充実の2〜3周回エンジンビルド！)
-const BOX_COSTS = [1, 2, 3];   // 2箱目: 1塩, 3箱目: 2塩, 4箱目: 3塩 (初期1箱所持)
+const BOX_COSTS = [1, 3, 7];   // 2箱目: 1塩, 3箱目: 3塩, 4箱目: 7塩 (指数関数的コスト上昇)
 const FLIP_COST = 2;           // 高級箱化コスト: 2塩
 const FLIP_BONUS = 3;          // 高級箱出荷ボーナス: 素点 + 3塩
 // マス2, 8 および 4, 6 は「街道」（施設アクションなし）
@@ -251,8 +251,8 @@ function initGame() {
     boxes: [
       { unlocked: true, flipped: false, cargo: null, salt: 0 },  // 1箱目 (初期所持)
       { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 2箱目 (箱屋で1塩で増設)
-      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 3箱目 (箱屋で2塩で増設)
-      { unlocked: false, flipped: false, cargo: null, salt: 0 }  // 4箱目 (箱屋で3塩で増設)
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }, // 3箱目 (箱屋で3塩で増設)
+      { unlocked: false, flipped: false, cargo: null, salt: 0 }  // 4箱目 (箱屋で7塩で増設)
     ],
     pouchSalt: 0,
     score: 0,

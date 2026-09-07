@@ -23,7 +23,7 @@ const CARD_TEMPLATES = {
 
 const HAND_LIMIT  = 5;
 const WIN_SCORE   = 20;
-const BOX_COSTS   = [1, 3, 7];
+const BOX_COSTS = [1, 2, 3];
 const FLIP_COST   = 2;
 const WOOD_BONUS  = 0;
 const FLIP_BONUS  = 3;

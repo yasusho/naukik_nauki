@@ -37,7 +37,7 @@ const HAND_LIMIT = 5;
 const BOX_TILES = [1, 7];
 const PORT_TILE = 5;
 const GUILD_TILES = [3, 9];
-const BOX_COSTS = [1, 2, 3];
+const BOX_COSTS = [1, 3, 7];
 
 const CARD_COPIES = 4;
 
