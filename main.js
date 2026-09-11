@@ -1212,7 +1212,7 @@ function App() {
         h('a', {
           href: 'dashboard.html',
           className: 'btn btn-purple',
-          style: { textDecoration: 'none', fontSize: '11px', padding: '3px 8px', borderRadius: '12px' }
+          style: { textDecoration: 'none', fontSize: '11px', padding: '3px 8px' }
         }, '📊 分析・検証')
       ])
     ]),
@@ -1383,8 +1383,8 @@ function App() {
               className: `cargo-box-card ${cardClass}`,
               style: {
                 borderColor: isHomeNow ? '#10b981' : '#0d9488',
-                cursor: isHomeNow ? 'pointer' : 'default',
-                boxShadow: isHomeNow ? '0 0 0 2px rgba(16, 185, 129, 0.3)' : undefined
+                borderWidth: isHomeNow ? '2px' : '1px',
+                cursor: isHomeNow ? 'pointer' : 'default'
               },
               onClick: () => {
                 if (isHomeNow) handleDeliverBox(idx);
