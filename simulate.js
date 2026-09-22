@@ -380,16 +380,37 @@ function runEvaluationMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes'
         return b;
       });
     } else if (curr.pos === PORT_TILE) {
-      // 港: 木箱は素点そのまま, 桐箱は素点+2塩
+      // 港: 木箱は素点そのまま, 桐箱は素点+2塩 ＆ 港町の流行
+      let cargoCards = [];
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
           const bonus = b.flipped ? FLIP_BONUS : WOOD_BONUS;
           const gain = b.cargo.salt + bonus;
-          if (b.cargo.cards) state.discard.push(...b.cargo.cards);
+          if (b.cargo.cards) cargoCards.push(...b.cargo.cards);
           return { ...b, cargo: null, salt: gain };
         }
         return b;
       });
+
+      if (cargoCards.length > 0) {
+        let curDeck = state.deck;
+        let disc = state.discard;
+        if (curDeck.length === 0 && disc.length > 0) {
+          curDeck = shuffle(disc);
+          disc = [];
+        }
+        let cardsToRecycle = [...cargoCards];
+        if (curDeck.length > 0) {
+          const trendCard = curDeck.shift();
+          const matches = curr.hand.filter(c => c.type === trendCard.type && c.num === trendCard.num).length;
+          if (matches > 0) {
+            curr.score += matches;
+          }
+          cardsToRecycle.push(trendCard);
+        }
+        state.deck = shuffle([...curDeck, ...cardsToRecycle]);
+        state.discard = disc;
+      }
     } else if (GUILD_TILES.includes(curr.pos)) {
       const unflippedIdx = bxs.findIndex(b => b.unlocked && !b.flipped);
       const curTot = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;

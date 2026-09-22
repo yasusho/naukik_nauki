@@ -562,15 +562,37 @@ function runTrackedMatch(stratKeys = ['adaptive', 'moreBoxes', 'qualityBoxes', '
       }
     } else if (curr.pos === PORT_TILE) {
       tracking.portVisits[state.turn]++;
+      let cargoCards = [];
       bxs = bxs.map(b => {
         if (b.unlocked && b.cargo) {
           // 木箱: 素点そのまま / 高級箱(裏返し): 素点 + FLIP_BONUS！
           const gain = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
-          if (b.cargo.cards) state.discard.push(...b.cargo.cards);
+          if (b.cargo.cards) cargoCards.push(...b.cargo.cards);
           return { ...b, cargo: null, salt: gain };
         }
         return b;
       });
+
+      // 港町の流行判定 ＆ 即時山札シャッフル
+      if (cargoCards.length > 0) {
+        let curDeck = state.deck;
+        let disc = state.discard;
+        if (curDeck.length === 0 && disc.length > 0) {
+          curDeck = shuffle(disc, random);
+          disc = [];
+        }
+        let cardsToRecycle = [...cargoCards];
+        if (curDeck.length > 0) {
+          const trendCard = curDeck.shift();
+          const matches = curr.hand.filter(c => c.type === trendCard.type && c.num === trendCard.num).length;
+          if (matches > 0) {
+            curr.score += matches;
+          }
+          cardsToRecycle.push(trendCard);
+        }
+        state.deck = shuffle([...curDeck, ...cardsToRecycle], random);
+        state.discard = disc;
+      }
     } else if (GUILD_TILES.includes(curr.pos)) {
       const unflippedIdx = bxs.findIndex(b => b.unlocked && !b.flipped);
       const curTot = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + curr.pouchSalt;

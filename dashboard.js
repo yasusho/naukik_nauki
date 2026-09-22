@@ -528,14 +528,35 @@ function runSingleGame(botStrategies, config) {
 
       if (curr.score >= config.winScore) state.finalRoundTriggered = true;
     } else if (curr.pos === PORT_TILE) {
+      let cargoCards = [];
       curr.boxes.forEach(b => {
         if (b.unlocked && b.cargo) {
           const bonus = b.flipped ? (config.flipBonus || 3) : 0;
           b.salt = b.cargo.salt + bonus;
-          if (b.cargo.cards) state.discard.push(...b.cargo.cards);
+          if (b.cargo.cards) cargoCards.push(...b.cargo.cards);
           b.cargo = null;
         }
       });
+
+      if (cargoCards.length > 0) {
+        let curDeck = state.deck;
+        let disc = state.discard;
+        if (curDeck.length === 0 && disc.length > 0) {
+          curDeck = shuffle(disc);
+          disc = [];
+        }
+        let cardsToRecycle = [...cargoCards];
+        if (curDeck.length > 0) {
+          const trendCard = curDeck.shift();
+          const matches = curr.hand.filter(c => c.type === trendCard.type && c.num === trendCard.num).length;
+          if (matches > 0) {
+            curr.score += matches;
+          }
+          cardsToRecycle.push(trendCard);
+        }
+        state.deck = shuffle([...curDeck, ...cardsToRecycle]);
+        state.discard = disc;
+      }
 
       const hSets = findSets(curr.hand);
       if (hSets.length > 0) {

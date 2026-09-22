@@ -270,7 +270,9 @@ function initGame() {
     gameOver: false,
     finalRoundTriggered: false,
     refillCount: 0,
-    excessCount: 0
+    excessCount: 0,
+    trendNotice: null,
+    trendCheckedInTurn: false
   };
 }
 
@@ -415,7 +417,8 @@ function App() {
       turn: (prev.turn + 1) % 4,
       step: 1,
       gameOver: prev.finalRoundTriggered && prev.turn === 3,
-      excessCount: 0
+      excessCount: 0,
+      trendCheckedInTurn: false
     }));
   };
 
@@ -448,7 +451,44 @@ function App() {
     }));
   };
 
-  // 港で特定の荷箱だけ荷下ろし (木箱=素点, 高級箱=素点+3塩！)
+  // 港町の流行チェック＆即時山札シャッフル用ヘルパー
+  const executePortTrendAndRecycle = (hand, deck, discard, returnedCards, alreadyChecked) => {
+    let curDeck = [...deck];
+    let curDisc = [...discard];
+    let cardsToRecycle = [...returnedCards];
+    let trendNotice = null;
+    let gainedScore = 0;
+
+    if (!alreadyChecked) {
+      if (curDeck.length === 0 && curDisc.length > 0) {
+        curDeck = shuffle(curDisc);
+        curDisc = [];
+      }
+      if (curDeck.length > 0) {
+        const trendCard = curDeck.shift();
+        const matches = hand.filter(c => c.type === trendCard.type && c.num === trendCard.num).length;
+        gainedScore = matches;
+        cardsToRecycle.push(trendCard);
+        trendNotice = {
+          card: trendCard,
+          matches,
+          playerName: me.name,
+          points: matches,
+          timestamp: Date.now()
+        };
+      }
+    }
+
+    const updatedDeck = shuffle([...curDeck, ...cardsToRecycle]);
+    return {
+      updatedDeck,
+      updatedDiscard: curDisc,
+      trendNotice,
+      gainedScore
+    };
+  };
+
+  // 港で特定の荷箱だけ荷下ろし (木箱=素点, 高級箱=素点+3塩！) + 港町の流行
   const handlePortSellBox = (boxIdx) => {
     if (!isHuman || state.step !== 3 || p.pos !== 5) return;
     const box = me.boxes[boxIdx];
@@ -462,31 +502,61 @@ function App() {
       return b;
     });
 
+    const { updatedDeck, updatedDiscard, trendNotice, gainedScore } = executePortTrendAndRecycle(
+      me.hand,
+      state.deck,
+      state.discard,
+      returnedCards,
+      state.trendCheckedInTurn
+    );
+
+    const newScore = me.score + gainedScore;
+
     setState(prev => ({
       ...prev,
-      discard: [...prev.discard, ...returnedCards],
-      players: prev.players.map((pl, i) => i === 0 ? { ...pl, boxes: newBoxes } : pl)
+      deck: updatedDeck,
+      discard: updatedDiscard,
+      trendNotice: trendNotice || prev.trendNotice,
+      trendCheckedInTurn: true,
+      finalRoundTriggered: prev.finalRoundTriggered || newScore >= WIN_SCORE,
+      players: prev.players.map((pl, i) => i === 0 ? { ...pl, score: newScore, boxes: newBoxes } : pl)
     }));
   };
 
-  // 港ですべての荷物を一括荷下ろし (木箱=素点, 高級箱=素点+3塩！)
+  // 港ですべての荷物を一括荷下ろし (木箱=素点, 高級箱=素点+3塩！) + 港町の流行
   const handlePortSellAll = () => {
     if (!isHuman || state.step !== 3 || p.pos !== 5) return;
-    let cardsToDiscard = [];
+    let cardsToRecycle = [];
 
     const newBoxes = me.boxes.map(b => {
       if (b.unlocked && b.cargo) {
         const gain = b.flipped ? (b.cargo.salt + FLIP_BONUS) : b.cargo.salt;
-        if (b.cargo.cards) cardsToDiscard.push(...b.cargo.cards);
+        if (b.cargo.cards) cardsToRecycle.push(...b.cargo.cards);
         return { ...b, cargo: null, salt: gain };
       }
       return b;
     });
 
+    if (cardsToRecycle.length === 0) return;
+
+    const { updatedDeck, updatedDiscard, trendNotice, gainedScore } = executePortTrendAndRecycle(
+      me.hand,
+      state.deck,
+      state.discard,
+      cardsToRecycle,
+      state.trendCheckedInTurn
+    );
+
+    const newScore = me.score + gainedScore;
+
     setState(prev => ({
       ...prev,
-      discard: [...prev.discard, ...cardsToDiscard],
-      players: prev.players.map((pl, i) => i === 0 ? { ...pl, boxes: newBoxes } : pl)
+      deck: updatedDeck,
+      discard: updatedDiscard,
+      trendNotice: trendNotice || prev.trendNotice,
+      trendCheckedInTurn: true,
+      finalRoundTriggered: prev.finalRoundTriggered || newScore >= WIN_SCORE,
+      players: prev.players.map((pl, i) => i === 0 ? { ...pl, score: newScore, boxes: newBoxes } : pl)
     }));
   };
 
@@ -597,7 +667,8 @@ function App() {
       ...prev,
       turn: (prev.turn + 1) % 4,
       step: 1,
-      gameOver: prev.finalRoundTriggered && prev.turn === 3
+      gameOver: prev.finalRoundTriggered && prev.turn === 3,
+      trendCheckedInTurn: false
     }));
   };
 
@@ -607,6 +678,7 @@ function App() {
 
     const timer = setTimeout(() => {
       const curr = state.players[state.turn];
+      let botTrendNotice = null;
 
       if (state.step === 1) {
         const hList = curr.hand;
@@ -819,15 +891,43 @@ function App() {
             pouchSalt = 0;
           }
         } else if (nextPos === 5) {
-          // 港 (5): 荷箱の荷下ろし (木箱=素点そのまま, 高級箱=素点+3塩！)
+          // 港 (5): 荷箱の荷下ろし (木箱=素点そのまま, 高級箱=素点+3塩！) + 港町の流行
+          let cargoCards = [];
           bxs = bxs.map(b => {
             if (b.unlocked && b.cargo) {
               const gain = b.cargo.salt + (b.flipped ? FLIP_BONUS : 0);
-              if (b.cargo.cards) newDiscard.push(...b.cargo.cards);
+              if (b.cargo.cards) cargoCards.push(...b.cargo.cards);
               return { ...b, cargo: null, salt: gain };
             }
             return b;
           });
+
+          if (cargoCards.length > 0) {
+            let curDeck = [...newDeck];
+            let disc = [...newDiscard];
+            if (curDeck.length === 0 && disc.length > 0) {
+              curDeck = shuffle(disc);
+              disc = [];
+            }
+            let cardsToRecycle = [...cargoCards];
+            if (curDeck.length > 0) {
+              const trendCard = curDeck.shift();
+              const matches = hnd.filter(c => c.type === trendCard.type && c.num === trendCard.num).length;
+              if (matches > 0) {
+                sc += matches;
+              }
+              cardsToRecycle.push(trendCard);
+              botTrendNotice = {
+                card: trendCard,
+                matches,
+                playerName: curr.name,
+                points: matches,
+                timestamp: Date.now()
+              };
+            }
+            newDeck = shuffle([...curDeck, ...cardsToRecycle]);
+            newDiscard = disc;
+          }
         } else if (nextPos === 3 || nextPos === 7) {
           // 会所 (3, 7: 線対称): 箱裏返し (2塩)
           const curTotSalt = bxs.reduce((sum, b) => sum + (b.salt || 0), 0) + pouchSalt;
@@ -904,6 +1004,8 @@ function App() {
           road: newRoad,
           players: newPlayers,
           finalRoundTriggered,
+          trendNotice: botTrendNotice !== null ? botTrendNotice : prev.trendNotice,
+          trendCheckedInTurn: false,
           turn: isRoundComplete ? prev.turn : (prev.turn + 1) % 4,
           step: 1,
           gameOver: isRoundComplete
@@ -1167,7 +1269,7 @@ function App() {
               return h('button', {
                 onClick: handlePortSellAll,
                 className: 'btn btn-primary btn-sm'
-              }, `⚓ 荷下ろし (+${totalExpectedGain}塩)`);
+              }, `⚓ 荷下ろし (+${totalExpectedGain}塩 ＆ 🌟流行判定)`);
             })() : h('span', { className: 'action-bar-sub' }, '積荷なし')
           )
         ]),
@@ -1292,6 +1394,60 @@ function App() {
         ]);
       })
     ),
+
+    // 港町の流行 通知バナー
+    state.trendNotice && h('div', {
+      className: 'trend-banner',
+      style: {
+        background: '#fffbeb',
+        border: '1px solid #f59e0b',
+        padding: '6px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '10px',
+        fontSize: '12px'
+      }
+    }, [
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } }, [
+        h('span', { style: { fontSize: '15px' } }, '🌟'),
+        h('strong', { style: { color: '#b45309' } }, '港町の流行:'),
+        h('span', null, `${state.trendNotice.playerName} が納品！`),
+        h('span', {
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '1px 6px',
+            background: '#ffffff',
+            border: '1px solid #f59e0b',
+            fontWeight: 'bold',
+            fontSize: '12px'
+          }
+        }, [
+          GOODS[state.trendNotice.card.type]?.icon || '',
+          `${GOODS[state.trendNotice.card.type]?.name || ''}の${state.trendNotice.card.num}`
+        ]),
+        h('span', { style: { fontWeight: 'bold', color: state.trendNotice.matches > 0 ? '#16a34a' : '#64748b' } },
+          state.trendNotice.matches > 0
+            ? `手札に ${state.trendNotice.matches}枚 一致！ (+${state.trendNotice.points}点 獲得！)`
+            : '手札に一致なし (+0点)'
+        ),
+        h('span', { style: { color: '#92400e', fontSize: '11px' } }, '（荷物と流行カードは山札へシャッフル）')
+      ]),
+      h('button', {
+        style: {
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#92400e',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          padding: '0 4px'
+        },
+        onClick: () => setState(prev => ({ ...prev, trendNotice: null }))
+      }, '×')
+    ]),
 
     // 90度回転 横長街道マップ (10マス ＆ 4共有市場)
     renderBoard(),
