@@ -35,7 +35,7 @@ mak-mak it tudekile jo nukil-polto at makanamele pi letit 2? nucti.
 
 # 3. penen
 
-dindunit kaxel leti papala pi lauzait lukxe.
+dindunit kaxel leti bapala pi lauzait lukxe.
 
 ## lauzait lime
 amolit 6lt lime leti bepale.
@@ -114,7 +114,7 @@ co delu letit jumin leti bapala. bapala molip jo jumin pi letit lukxe leti.
 
 **xep nauki leti atakecleti late** - xep nauki atakecit 3lt nucti
 
-**junakila leti kaniciti** - kaceit lukxe leti 1lt bapala. (jo 1lt dije lap xelit 1lt bapala.) xelit kaleti bapala pi jo cuit kije leti kaxel nuwaxecleti late mol pi atakecit 2lt nucti. delu nipit kaceit leti bapala.
+**junakila leti kaniciti** - kaceit lukxe leti 1lt bapala. (jo 1lt dije lap xelit 1lt bapala.) xelit kaleti bapala pi jo ka nuwaxecleti kak leti kaxel atakecit 2lt nucti. delu nipit kaceit leti bapala.
      
 # 6. belpic leti lucuc leti nole
 
