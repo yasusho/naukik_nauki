@@ -7,7 +7,7 @@ jepam at zawaim pulecit pi mi cet lauzait pemecepe leti cepkulante.
 <div class="lead">
 nenni-licxa-uxi. makana e nulowik pi lata pulecit nucti pi e tude jo junakila leti mau. kaleti cunenek e co pacit enja leti. co penxeit nucti jo nukil-polto. pi, penen molip nat.
 
-co letit leti lap e nauki (ka e batan cupoi leti cutapijot. lucit ka pi boncenait kaxel) nunenau leti late? kaxel? e, molip! delu e tude pi jo cileti polto delu letit! jo atakecit leti, coleti lelot nepelit coleti anpilun leti kaxel! jo kaleti lawol, kame lata cene penxeit cet jo auc leti nucti?
+co letit leti lap e nauki (ka e batan cupoi leti cutapijot. lucit ka pi boncenait kaxel). nunenau leti late? kaxel? e, molip! delu e tude pi jo cileti polto delu letit! jo atakecit leti, coleti lelot nepelit coleti anpilun leti kaxel! jo kaleti lawol, kame lata cene penxeit cet jo auc leti nucti?
 </div>
 ---
 
