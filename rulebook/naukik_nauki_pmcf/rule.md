@@ -35,6 +35,8 @@ mak-mak it tudekile jo nukil-polto at makanamele pi letit 2? nucti.
 
 # 3. penen
 
+dindunit kaxel leti papala pi lauzait lukxe.
+
 ## lauzait lime
 amolit 6lt lime leti bepale.
 ![](map_order.svg)
@@ -46,7 +48,7 @@ jo aucleti bepale leti jumin, letit lukxe leti 1lt bapala pi kaceit ka.
 jo pankaleti cul delu tectelit xeplata at belpic leti tudeleti lal.
 
 ## 1lt lata leti penen
-amolit zo jo nukil-polto.
+tectelit 1lt dec leti zo pi amolit ka jo nukil-polto.
 
 letit lukxe leti 5lt bapala pi ka e kopzo.
 

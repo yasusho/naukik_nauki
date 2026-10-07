@@ -29,8 +29,18 @@ img {
     display: block;
     max-width: 100%;
     height: auto;
-    margin: 0.5em auto;
+    margin: 0.32em auto;
     break-inside: avoid;
+}
+
+img[src*="header"] {
+    margin-top: 0;
+    margin-bottom: 0.2em;
+}
+
+img[src*="footer"] {
+    margin-top: 0.1em;
+    margin-bottom: 0;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -42,8 +52,8 @@ h1 {
     font-size: 12q;
     color: var(--color-coral);
     font-weight: bold;
-    margin-top: 0.6em;
-    margin-bottom: 0.4em;
+    margin-top: 0.58em;
+    margin-bottom: 0.38em;
     border-left: 1.2mm solid var(--color-mustard);
     padding-left: 0.4em;
     break-after: avoid;
@@ -54,8 +64,8 @@ h2 {
     font-size: 11q;
     color: var(--color-coral);
     font-weight: bold;
-    margin-top: 0.65em;
-    margin-bottom: 0.25em;
+    margin-top: 0.62em;
+    margin-bottom: 0.22em;
     border-bottom: 0.35mm solid var(--color-mustard);
     padding-bottom: 0.1em;
     break-after: avoid;
@@ -66,8 +76,8 @@ h3 {
     font-size: 11q;
     color: var(--color-text);
     font-weight: bold;
-    margin-top: 0.5em;
-    margin-bottom: 0.2em;
+    margin-top: 0.48em;
+    margin-bottom: 0.18em;
     break-after: avoid;
     break-inside: avoid;
 }
@@ -83,8 +93,8 @@ h4 {
     font-size: 11q;
     color: var(--color-text);
     font-weight: bold;
-    margin-top: 0.4em;
-    margin-bottom: 0.2em;
+    margin-top: 0.38em;
+    margin-bottom: 0.18em;
     break-after: avoid;
     break-inside: avoid;
 }
@@ -92,7 +102,7 @@ h4 {
 hr {
     border: none;
     border-top: 0.35mm solid var(--color-mustard);
-    margin: 0.6em 0;
+    margin: 0.2em 0;
 }
 
 p {
@@ -100,13 +110,18 @@ p {
     line-height: 1.45;
     text-align: justify;
     text-justify: inter-ideograph;
-    margin-bottom: 0.5em;
+    margin-bottom: 0.42em;
+}
+
+p:has(img[src*="footer"]),
+section:last-of-type p:last-of-type {
+    margin-bottom: 0;
 }
 
 ol {
     list-style: none;
     counter-reset: ol-num;
-    margin-bottom: 0.5em;
+    margin-bottom: 0.42em;
 }
 
 ol li {
@@ -115,7 +130,7 @@ ol li {
     line-height: 1.4;
     padding-left: 1.6em;
     text-indent: -1.6em;
-    margin-bottom: 0.25em;
+    margin-bottom: 0.24em;
     break-inside: avoid;
 }
 
@@ -126,7 +141,7 @@ ol li::before {
 
 ul {
     list-style: none;
-    margin-bottom: 0.5em;
+    margin-bottom: 0.42em;
 }
 
 ul li {
@@ -134,7 +149,7 @@ ul li {
     line-height: 1.4;
     padding-left: 1.2em;
     text-indent: -1.2em;
-    margin-bottom: 0.25em;
+    margin-bottom: 0.24em;
     break-inside: avoid;
 }
 
@@ -149,7 +164,7 @@ ul li::before {
     font-size: 11q;
     font-weight: bold;
     line-height: 1.5;
-    margin-bottom: 0.6em;
+    margin-bottom: 0.35em;
 }
 
 strong {
